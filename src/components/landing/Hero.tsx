@@ -1,9 +1,10 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function Hero() {
-  const navigate = useNavigate();
+  const scrollToCreate = () => {
+    document.getElementById('create')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -58,18 +59,10 @@ export function Hero() {
             <Button 
               size="lg" 
               className="group px-8 py-6 text-lg rounded-full gradient-hero border-0 shadow-elevated hover:shadow-soft transition-all duration-300"
-              onClick={() => navigate('/app')}
+              onClick={scrollToCreate}
             >
               Create My Wrapception
-              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="lg"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => navigate('/app?demo=true')}
-            >
-              See Example
+              <ArrowDown className="ml-2 w-5 h-5 group-hover:translate-y-1 transition-transform" />
             </Button>
           </div>
 
@@ -83,11 +76,14 @@ export function Hero() {
         </div>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
+        <button 
+          onClick={scrollToCreate}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce cursor-pointer"
+        >
           <div className="w-6 h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-2">
             <div className="w-1 h-2 rounded-full bg-muted-foreground/50" />
           </div>
-        </div>
+        </button>
       </div>
     </section>
   );
