@@ -1,73 +1,88 @@
-# Welcome to your Lovable project
+# Wrapception
 
-## Project info
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Table of Contents
+- [Problem](#problem)
+- [Solution](#solution)
+- [How It Works](#how-it-works)
+- [Supported Platforms](#supported-platforms)
+- [Target Users](#target-users)
+- [Long‑Term Vision](#long-term-vision)
+- [Technologies](#technologies)
+- [Getting Started](#getting-started)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
 
-## How can I edit this code?
+## Problem
+Every year, dozens of apps generate beautiful but siloed “Year in Review” summaries. These insights are fragmented across platforms, locked inside screenshots, stories, and PDFs, making it impossible to compare, correlate, or reflect on holistically.
 
-There are several ways of editing your application.
+> You don’t live your life in apps. Your data does.
 
-**Use Lovable**
+## Solution
+**Wrapception** is a web app that lets users upload Year‑End summaries (images, PDFs, text) from all their services and uses AI to generate a single, intelligent, cross‑domain annual view of their life.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- One unified dashboard
+- One coherent narrative
+- One memory they actually own
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## How It Works (Simple & Powerful)
+1. **Upload** – Screenshots (Spotify Wrapped, Strava Year in Sport, Goodreads Review, etc.), PDFs, exports, or copied text.
+2. **AI Extraction** – Vision + OCR + semantic parsing; metrics normalized into a unified schema.
+3. **Intelligence Layer** – Cross‑domain analysis, patterns, correlations, trends, natural‑language yearly narrative.
+4. **Unified Output** – Visual dashboard, AI‑written “Your Year” story, shareable & exportable insights.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Supported Platforms
+- **Music, Audio & Video**: Spotify Wrapped, Apple Music Replay, YouTube Recap, SoundCloud Playback
+- **Fitness & Health**: Strava Year in Sport, Garmin Year in Review, Nike Training Club Recap, Apple Fitness+ Summary
+- **Reading & Learning**: Goodreads Year in Review, Duolingo Year in Review, Pocket Year in Review, Medium Stats
+- **Movies & TV**: Letterboxd Year in Review, IMDb User Stats
+- **Work & Coding**: LinkedIn, GitHub Contribution Graph, ChatGPT Usage History, Cursor Activity Signals, Lovable Project Stats
 
-Follow these steps:
+---
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Target Users
+- Power users & creators
+- Developers, founders, knowledge workers
+- Anyone who already tracks their life and wants meaning
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+---
 
-# Step 3: Install the necessary dependencies.
-npm i
+## Long‑Term Vision
+Wrapception starts as a Year‑in‑Review aggregator and evolves into a **Personal Memory OS** with:
+- Multi‑year comparisons
+- Life trend forecasting
+- Personal retrospectives
+- Annual “Life Reports” you actually keep
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+---
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
+## Technologies
 - Vite
 - TypeScript
 - React
-- shadcn-ui
+- shadcn‑ui
 - Tailwind CSS
 
-## How can I deploy this project?
+---
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Getting Started
+```sh
+# Clone the repository
+git clone <YOUR_GIT_URL>
 
-## Can I connect a custom domain to my Lovable project?
+# Install dependencies
+npm i
 
-Yes, you can!
+# Run the development server
+npm run dev
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Deployment
+Simply run `npm run build` to create a production build, then deploy the `dist` folder to your preferred hosting service (Vercel, Netlify, GitHub Pages, etc.).
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Contributing
+Feel free to open issues or submit pull requests. See the [contributing guide](https://github.com/yourrepo/Wrapception/blob/main/CONTRIBUTING.md) for details.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, ChevronDown, ChevronUp, AlertTriangle, Info } from 'lucide-react';
+import { Settings, ChevronDown, ChevronUp, AlertTriangle, Info, Save, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +10,9 @@ import { useSession } from '@/context/SessionContext';
 import { DEFAULT_AI_CONFIGS } from '@/types/session';
 
 export function AIConfigPanel() {
-  const { session, updateAIConfig } = useSession();
+  const { session, updateAIConfig, saveSession } = useSession();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const { aiConfig } = session;
 
   const handleProviderChange = (provider: string) => {
@@ -19,7 +20,8 @@ export function AIConfigPanel() {
     if (preset) {
       updateAIConfig({
         ...preset,
-        headers: aiConfig.headers, // Keep existing API key
+        apiKey: aiConfig.apiKey, // Keep existing API key
+        headers: aiConfig.headers, // Keep existing headers
       });
     }
   };
@@ -77,7 +79,7 @@ export function AIConfigPanel() {
                 <div className="text-sm">
                   <p className="font-medium text-foreground">API costs apply</p>
                   <p className="text-muted-foreground">
-                    Using AI will make API calls to your configured provider. 
+                    Using AI will make API calls to your configured provider.
                     Standard API pricing applies.
                   </p>
                 </div>
@@ -92,8 +94,8 @@ export function AIConfigPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="gemini">Google Gemini</SelectItem>
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="grok">Grok (xAI)</SelectItem>
                     <SelectItem value="groq">Groq</SelectItem>
                     <SelectItem value="custom">Custom Endpoint</SelectItem>
@@ -119,6 +121,47 @@ export function AIConfigPanel() {
                   onChange={(e) => updateAIConfig({ model: e.target.value })}
                   placeholder="gpt-4o-mini"
                 />
+              </div>
+
+              {/* API Key */}
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  value={aiConfig.apiKey}
+                  onChange={(e) => updateAIConfig({ apiKey: e.target.value })}
+                  placeholder="Enter your API key"
+                />
+              </div>
+
+              {/* Save Button */}
+              <Button
+                onClick={() => {
+                  saveSession();
+                  setIsSaved(true);
+                  setTimeout(() => setIsSaved(false), 2000);
+                }}
+                className="w-full"
+                variant={isSaved ? "outline" : "default"}
+              >
+                {isSaved ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Saved!
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Configuration
+                  </>
+                )}
+              </Button>
+
+              <div className="flex gap-2 p-3 rounded-lg bg-secondary/50">
+                <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Your configuration is saved in your browser's local storage and persists across sessions.
+                </p>
               </div>
 
               {/* Headers (JSON) */}

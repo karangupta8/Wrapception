@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Download, Sparkles, RefreshCw, FileJson } from 'lucide-react';
+import { Plus, Sparkles, FileJson, FolderUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useSession } from '@/context/SessionContext';
@@ -7,19 +7,19 @@ import { SourceCard } from './SourceCard';
 import { InsightCard } from './InsightCard';
 import { AIConfigPanel } from './AIConfigPanel';
 import { UploadWizard } from './UploadWizard';
-import { CATEGORY_INFO, Category } from '@/types/session';
+import { QuickUpload } from './QuickUpload';
+import { BulkUploadModal } from './BulkUploadModal';
+import { StatsOverview } from './StatsOverview';
+import { CategoryPieChart } from './CategoryPieChart';
+import { PlatformBarChart } from './PlatformBarChart';
 import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
   const { session, removeSource, updateInsight, updateNarrative, generateMockInsights, exportSession } = useSession();
   const [showUploadWizard, setShowUploadWizard] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
   const { toast } = useToast();
-
-  const categoryCounts = session.uploadedSources.reduce((acc, source) => {
-    acc[source.category] = (acc[source.category] || 0) + 1;
-    return acc;
-  }, {} as Record<Category, number>);
 
   const handleExport = () => {
     const data = exportSession();
@@ -30,7 +30,7 @@ export function Dashboard() {
     a.download = `wrapception-${session.year}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    
+
     toast({
       title: "Exported successfully",
       description: "Your Wrapception has been downloaded as JSON.",
@@ -41,7 +41,7 @@ export function Dashboard() {
     generateMockInsights();
     toast({
       title: "Insights generated",
-      description: session.aiConfig.enabled 
+      description: session.aiConfig.enabled
         ? "AI insights have been generated from your uploads."
         : "Mock insights generated. Enable AI for real analysis.",
     });
@@ -49,7 +49,7 @@ export function Dashboard() {
 
   if (showUploadWizard) {
     return (
-      <UploadWizard 
+      <UploadWizard
         onComplete={() => setShowUploadWizard(false)}
         onCancel={() => setShowUploadWizard(false)}
       />
@@ -58,6 +58,9 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Bulk Upload Modal */}
+      <BulkUploadModal open={showBulkUpload} onOpenChange={setShowBulkUpload} />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -69,74 +72,57 @@ export function Dashboard() {
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleExport} disabled={session.uploadedSources.length === 0}>
             <FileJson className="w-4 h-4 mr-2" />
-            Export JSON
+            Export
+          </Button>
+          <Button variant="outline" onClick={() => setShowBulkUpload(true)}>
+            <FolderUp className="w-4 h-4 mr-2" />
+            Bulk Upload
           </Button>
           <Button onClick={() => setShowUploadWizard(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Wrapped
+            Wizard
           </Button>
         </div>
       </div>
 
-      {/* Life Allocation View */}
-      {Object.keys(categoryCounts).length > 0 && (
-        <div className="p-6 rounded-2xl bg-card shadow-card">
-          <h2 className="font-display text-2xl mb-6">Life Allocation</h2>
-          <div className="flex flex-wrap gap-3">
-            {(Object.entries(categoryCounts) as [Category, number][]).map(([category, count]) => {
-              const info = CATEGORY_INFO[category];
-              const total = session.uploadedSources.length;
-              const percentage = Math.round((count / total) * 100);
-              
-              return (
-                <div 
-                  key={category}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border/50"
-                >
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: info.color }}
-                  />
-                  <span className="font-medium">{info.label}</span>
-                  <span className="text-muted-foreground text-sm">{percentage}%</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Stats Overview */}
+      <StatsOverview />
+
+      {/* Quick Upload + Charts Row */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Quick Upload */}
+        <QuickUpload className="lg:col-span-1" />
+
+        {/* Charts */}
+        {session.uploadedSources.length > 0 && (
+          <>
+            <CategoryPieChart />
+            <PlatformBarChart />
+          </>
+        )}
+      </div>
 
       {/* Uploaded Sources */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-2xl">Uploaded Sources</h2>
         </div>
-        
+
         {session.uploadedSources.length === 0 ? (
-          <button 
-            onClick={() => setShowUploadWizard(true)}
-            className="w-full p-12 rounded-2xl border-2 border-dashed border-border hover:border-primary/30 hover:bg-secondary/30 transition-all text-center group"
-          >
-            <Plus className="w-12 h-12 mx-auto text-muted-foreground group-hover:text-primary transition-colors mb-4" />
-            <p className="text-lg font-medium mb-1">Add your first Wrapped</p>
-            <p className="text-muted-foreground">Upload screenshots, PDFs, or paste text from any service</p>
-          </button>
+          <div className="p-8 rounded-2xl border-2 border-dashed border-border text-center">
+            <p className="text-muted-foreground">
+              Use Quick Add above or the Bulk Upload button to get started
+            </p>
+          </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {session.uploadedSources.map((source) => (
-              <SourceCard 
-                key={source.id} 
-                source={source} 
+              <SourceCard
+                key={source.id}
+                source={source}
                 onRemove={() => removeSource(source.id)}
               />
             ))}
-            <button 
-              onClick={() => setShowUploadWizard(true)}
-              className="p-6 rounded-2xl border-2 border-dashed border-border hover:border-primary/30 hover:bg-secondary/30 transition-all flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add More</span>
-            </button>
           </div>
         )}
       </div>
@@ -147,8 +133,8 @@ export function Dashboard() {
       {/* Generate Insights Button */}
       {session.uploadedSources.length > 0 && (
         <div className="flex justify-center">
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             className="rounded-full px-8 gradient-hero border-0"
             onClick={handleGenerateInsights}
           >
@@ -172,8 +158,8 @@ export function Dashboard() {
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             {session.aiInsights.map((insight) => (
-              <InsightCard 
-                key={insight.id} 
+              <InsightCard
+                key={insight.id}
                 insight={insight}
                 onUpdate={(content) => updateInsight(insight.id, content)}
               />
@@ -187,15 +173,15 @@ export function Dashboard() {
         <div className="p-6 rounded-2xl bg-card shadow-card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-2xl">Your Year in Words</h2>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => setIsEditingNarrative(!isEditingNarrative)}
             >
               {isEditingNarrative ? 'Done' : 'Edit'}
             </Button>
           </div>
-          
+
           {isEditingNarrative ? (
             <Textarea
               value={session.narrativeSummary}

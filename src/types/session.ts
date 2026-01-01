@@ -42,6 +42,7 @@ export interface AIConfig {
   provider: string;
   endpoint: string;
   model: string;
+  apiKey: string;
   headers: Record<string, string>;
   visionSupported: boolean;
 }
@@ -90,7 +91,7 @@ export const DEFAULT_AI_CONFIGS: Record<string, Partial<AIConfig>> = {
   },
   gemini: {
     provider: 'gemini',
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
     model: 'gemini-1.5-flash',
     visionSupported: true,
   },
