@@ -1,6 +1,6 @@
 export type InputType = 'image' | 'pdf' | 'text';
 
-export type Category = 
+export type Category =
   | 'music'
   | 'fitness'
   | 'reading'
@@ -47,6 +47,12 @@ export interface AIConfig {
   visionSupported: boolean;
 }
 
+// Import analytics types from aiService
+import type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI } from '@/services/aiService';
+
+// Re-export for convenience
+export type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI };
+
 export interface SessionState {
   year: number;
   uploadedSources: UploadedSource[];
@@ -54,6 +60,8 @@ export interface SessionState {
   aiInsights: AIInsight[];
   narrativeSummary: string;
   aiConfig: AIConfig;
+  analyticsData: AnalyticsData | null;
+  isGeneratingInsights: boolean;
 }
 
 export const CATEGORY_INFO: Record<Category, { label: string; icon: string; color: string }> = {
@@ -91,8 +99,8 @@ export const DEFAULT_AI_CONFIGS: Record<string, Partial<AIConfig>> = {
   },
   gemini: {
     provider: 'gemini',
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-    model: 'gemini-1.5-flash',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-2.0-flash',
     visionSupported: true,
   },
   grok: {

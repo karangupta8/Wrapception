@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Plus, Sparkles, FileJson, FolderUp } from 'lucide-react';
+import { Plus, Sparkles, FileJson, FolderUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useSession } from '@/context/SessionContext';
 import { SourceCard } from './SourceCard';
-import { InsightCard } from './InsightCard';
 import { AIConfigPanel } from './AIConfigPanel';
 import { UploadWizard } from './UploadWizard';
 import { QuickUpload } from './QuickUpload';
@@ -12,10 +11,18 @@ import { BulkUploadModal } from './BulkUploadModal';
 import { StatsOverview } from './StatsOverview';
 import { CategoryPieChart } from './CategoryPieChart';
 import { PlatformBarChart } from './PlatformBarChart';
+import { InsightsDashboard } from './InsightsDashboard';
 import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
-  const { session, removeSource, updateInsight, updateNarrative, generateMockInsights, exportSession } = useSession();
+  const {
+    session,
+    removeSource,
+    updateNarrative,
+    generateInsights,
+    exportSession,
+    insightsError
+  } = useSession();
   const [showUploadWizard, setShowUploadWizard] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
@@ -37,14 +44,16 @@ export function Dashboard() {
     });
   };
 
-  const handleGenerateInsights = () => {
-    generateMockInsights();
-    toast({
-      title: "Insights generated",
-      description: session.aiConfig.enabled
-        ? "AI insights have been generated from your uploads."
-        : "Mock insights generated. Enable AI for real analysis.",
-    });
+  const handleGenerateInsights = async () => {
+    try {
+      await generateInsights();
+      toast({
+        title: "Insights generated",
+        description: "AI has analyzed your data and generated insights.",
+      });
+    } catch {
+      // Error is handled in context
+    }
   };
 
   if (showUploadWizard) {
@@ -132,44 +141,45 @@ export function Dashboard() {
 
       {/* Generate Insights Button */}
       {session.uploadedSources.length > 0 && (
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-3">
           <Button
             size="lg"
             className="rounded-full px-8 gradient-hero border-0"
             onClick={handleGenerateInsights}
+            disabled={session.isGeneratingInsights || !session.aiConfig.enabled}
           >
-            <Sparkles className="w-5 h-5 mr-2" />
-            {session.aiInsights.length > 0 ? 'Regenerate Insights' : 'Generate Insights'}
-          </Button>
-        </div>
-      )}
-
-      {/* AI Insights */}
-      {session.aiInsights.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-accent" />
-            <h2 className="font-display text-2xl">AI Insights</h2>
-            {!session.aiConfig.enabled && (
-              <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                Mock data
-              </span>
+            {session.isGeneratingInsights ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Generating Insights...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5 mr-2" />
+                {session.analyticsData ? 'Regenerate Insights' : 'Generate AI Insights'}
+              </>
             )}
-          </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            {session.aiInsights.map((insight) => (
-              <InsightCard
-                key={insight.id}
-                insight={insight}
-                onUpdate={(content) => updateInsight(insight.id, content)}
-              />
-            ))}
-          </div>
+          </Button>
+
+          {!session.aiConfig.enabled && (
+            <p className="text-sm text-muted-foreground">
+              Enable AI in configuration above to generate real insights
+            </p>
+          )}
+
+          {insightsError && (
+            <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm max-w-md text-center">
+              {insightsError}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Year Narrative */}
-      {session.narrativeSummary && (
+      {/* AI-Generated Insights Dashboard */}
+      {session.analyticsData && <InsightsDashboard />}
+
+      {/* Year Narrative (editable) */}
+      {session.narrativeSummary && !session.analyticsData && (
         <div className="p-6 rounded-2xl bg-card shadow-card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-2xl">Your Year in Words</h2>

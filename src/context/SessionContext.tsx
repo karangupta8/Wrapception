@@ -1,12 +1,13 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import {
   SessionState,
   UploadedSource,
   ExtractedMetric,
   AIInsight,
   AIConfig,
-  Category
+  AnalyticsData,
 } from '@/types/session';
+import { generateAIInsights } from '@/services/aiService';
 
 const STORAGE_KEY = 'wrapception_session';
 
@@ -32,6 +33,13 @@ const getInitialSession = (): SessionState => {
           createdAt: new Date(s.createdAt),
         }));
       }
+      // Restore analytics date
+      if (parsed.analyticsData?.generatedAt) {
+        parsed.analyticsData.generatedAt = new Date(parsed.analyticsData.generatedAt);
+      }
+      // Ensure new fields exist
+      parsed.analyticsData = parsed.analyticsData || null;
+      parsed.isGeneratingInsights = false;
       return parsed;
     }
   } catch (e) {
@@ -45,17 +53,10 @@ const getInitialSession = (): SessionState => {
     aiInsights: [],
     narrativeSummary: '',
     aiConfig: DEFAULT_AI_CONFIG,
+    analyticsData: null,
+    isGeneratingInsights: false,
   };
 };
-
-const MOCK_INSIGHTS: Omit<AIInsight, 'sourceIds'>[] = [
-  { id: '1', content: 'This was a year of deep focus and creative exploration.', isEdited: false },
-  { id: '2', content: 'Your fitness patterns show consistent dedication, especially in spring.', category: 'fitness', isEdited: false },
-  { id: '3', content: 'Reading and learning took a backseat during high-productivity months.', category: 'reading', isEdited: false },
-  { id: '4', content: 'Music choices reflected periods of both calm reflection and energetic creation.', category: 'music', isEdited: false },
-];
-
-const DEFAULT_NARRATIVE = `Your year was a tapestry of experiences woven across different aspects of life. The data suggests a balance between productivity and personal growth, with notable peaks in creative output during certain months. This was a year of discovery, challenge, and meaningful progress across the domains you chose to track.`;
 
 interface SessionContextType {
   session: SessionState;
@@ -68,21 +69,24 @@ interface SessionContextType {
   updateNarrative: (content: string) => void;
   updateAIConfig: (config: Partial<AIConfig>) => void;
   saveSession: () => void;
-  generateMockInsights: () => void;
+  generateInsights: () => Promise<void>;
   resetSession: () => void;
   exportSession: () => string;
+  insightsError: string | null;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionState>(getInitialSession);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const saveSession = useCallback(() => {
     try {
       // Don't store raw file content to avoid localStorage limits
       const toStore = {
         ...session,
+        isGeneratingInsights: false, // Never persist loading state
         uploadedSources: session.uploadedSources.map(s => ({
           ...s,
           rawContent: s.inputType === 'text' ? s.rawContent : '[File stored in memory]',
@@ -155,18 +159,56 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const generateMockInsights = useCallback(() => {
-    const sourceIds = session.uploadedSources.map(s => s.id);
-    const insights: AIInsight[] = MOCK_INSIGHTS.map(insight => ({
-      ...insight,
-      sourceIds,
-    }));
-    setSession(prev => ({
-      ...prev,
-      aiInsights: insights,
-      narrativeSummary: DEFAULT_NARRATIVE,
-    }));
-  }, [session.uploadedSources]);
+  const generateInsights = useCallback(async () => {
+    setInsightsError(null);
+
+    // Set loading state
+    setSession(prev => ({ ...prev, isGeneratingInsights: true }));
+
+    try {
+      const currentSession = session;
+
+      if (!currentSession.aiConfig.enabled) {
+        throw new Error('AI is not enabled. Please enable AI and configure your API key.');
+      }
+
+      if (!currentSession.aiConfig.apiKey) {
+        throw new Error('API key is required. Please enter your API key in AI Configuration.');
+      }
+
+      if (currentSession.uploadedSources.length === 0) {
+        throw new Error('No sources to analyze. Please upload some data first.');
+      }
+
+      const analyticsData = await generateAIInsights(
+        currentSession.aiConfig,
+        currentSession.uploadedSources,
+        currentSession.year
+      );
+
+      // Convert analytics to insights format for backward compatibility
+      const aiInsights: AIInsight[] = analyticsData.highlights.map(h => ({
+        id: h.id,
+        content: `**${h.title}**: ${h.description}`,
+        category: h.category,
+        sourceIds: currentSession.uploadedSources.map(s => s.id),
+        isEdited: false,
+      }));
+
+      setSession(prev => ({
+        ...prev,
+        isGeneratingInsights: false,
+        analyticsData,
+        aiInsights,
+        narrativeSummary: analyticsData.yearSummary,
+      }));
+
+    } catch (error) {
+      console.error('Failed to generate insights:', error);
+      setInsightsError(error instanceof Error ? error.message : 'Failed to generate insights');
+      setSession(prev => ({ ...prev, isGeneratingInsights: false }));
+    }
+  }, [session]);
 
   const resetSession = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
@@ -177,7 +219,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       aiInsights: [],
       narrativeSummary: '',
       aiConfig: DEFAULT_AI_CONFIG,
+      analyticsData: null,
+      isGeneratingInsights: false,
     });
+    setInsightsError(null);
   }, []);
 
   const exportSession = useCallback(() => {
@@ -204,9 +249,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateNarrative,
       updateAIConfig,
       saveSession,
-      generateMockInsights,
+      generateInsights,
       resetSession,
       exportSession,
+      insightsError,
     }}>
       {children}
     </SessionContext.Provider>
