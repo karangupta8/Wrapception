@@ -94,6 +94,8 @@ export function AIConfigPanel() {
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="gemini">Google Gemini</SelectItem>
+                    <SelectItem value="grok">Grok (xAI)</SelectItem>
+                    <SelectItem value="groq">Groq</SelectItem>
                     <SelectItem value="custom">Custom Endpoint</SelectItem>
                   </SelectContent>
                 </Select>
@@ -121,7 +123,10 @@ export function AIConfigPanel() {
 
               {/* Headers (JSON) */}
               <div className="space-y-2">
-                <Label>Headers (JSON)</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Headers (JSON)</Label>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Optional</span>
+                </div>
                 <Textarea
                   value={JSON.stringify(aiConfig.headers, null, 2)}
                   onChange={(e) => handleHeadersChange(e.target.value)}
@@ -132,8 +137,7 @@ export function AIConfigPanel() {
                 <div className="flex gap-2 p-3 rounded-lg bg-secondary/50">
                   <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                   <p className="text-xs text-muted-foreground">
-                    Your API key is only stored in this browser session. 
-                    It's never sent to our servers.
+                    Custom headers for authentication (e.g., API key). Only stored in this browser session.
                   </p>
                 </div>
               </div>

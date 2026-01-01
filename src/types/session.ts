@@ -94,6 +94,18 @@ export const DEFAULT_AI_CONFIGS: Record<string, Partial<AIConfig>> = {
     model: 'gemini-1.5-flash',
     visionSupported: true,
   },
+  grok: {
+    provider: 'grok',
+    endpoint: 'https://api.x.ai/v1/chat/completions',
+    model: 'grok-beta',
+    visionSupported: true,
+  },
+  groq: {
+    provider: 'groq',
+    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.1-70b-versatile',
+    visionSupported: false,
+  },
   custom: {
     provider: 'custom',
     endpoint: '',
