@@ -18,7 +18,8 @@ export interface UploadedSource {
   fileName?: string;
   notes?: string;
   createdAt: Date;
-  status: 'uploaded' | 'processing' | 'processed';
+  status: 'uploaded' | 'processing' | 'processed' | 'failed';
+  extractionError?: string;
 }
 
 export interface ExtractedMetric {
@@ -48,10 +49,10 @@ export interface AIConfig {
 }
 
 // Import analytics types from aiService
-import type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI } from '@/services/aiService';
+import type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI, SourceExtraction } from '@/services/aiService';
 
 // Re-export for convenience
-export type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI };
+export type { AnalyticsData, Highlight, Trend, CategoryStats, ExtractedMetricAI, SourceExtraction };
 
 export interface SessionState {
   year: number;

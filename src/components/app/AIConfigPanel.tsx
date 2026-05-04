@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, ChevronDown, ChevronUp, AlertTriangle, Info, Save, Check } from 'lucide-react';
+import { Settings, ChevronDown, ChevronUp, AlertTriangle, Info, Save, Check, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,7 +73,7 @@ export function AIConfigPanel() {
 
           {aiConfig.enabled && (
             <>
-              {/* Warning */}
+              {/* Cost warning */}
               <div className="flex gap-3 p-4 rounded-xl bg-accent/10 border border-accent/20">
                 <AlertTriangle className="w-5 h-5 text-accent shrink-0 mt-0.5" />
                 <div className="text-sm">
@@ -84,6 +84,21 @@ export function AIConfigPanel() {
                   </p>
                 </div>
               </div>
+
+              {/* Vision capability warning */}
+              {!aiConfig.visionSupported && (
+                <div className="flex gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                  <EyeOff className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground">Images not supported by this provider</p>
+                    <p className="text-muted-foreground">
+                      <strong>{aiConfig.provider}</strong> ({aiConfig.model}) cannot analyse screenshots or images.
+                      Switch to <strong>OpenAI GPT-4o</strong>, <strong>Google Gemini</strong>, or <strong>Anthropic Claude 3+</strong>
+                      {' '}to upload wrap screenshots. Text pastes will still work.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Provider selection */}
               <div className="space-y-2">
@@ -160,7 +175,7 @@ export function AIConfigPanel() {
               <div className="flex gap-2 p-3 rounded-lg bg-secondary/50">
                 <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground">
-                  Your configuration is saved in your browser's local storage and persists across sessions.
+                  Configuration saved in this browser (IndexedDB + localStorage). API key is stored in session storage and cleared when you close the tab.
                 </p>
               </div>
 

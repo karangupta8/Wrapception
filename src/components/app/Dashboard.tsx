@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Plus, Sparkles, FileJson, FolderUp, Loader2 } from 'lucide-react';
+import { Plus, Sparkles, FileJson, FolderUp, Loader2, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useSession } from '@/context/SessionContext';
 import { SourceCard } from './SourceCard';
 import { AIConfigPanel } from './AIConfigPanel';
+import { AIErrorAlert } from './AIErrorAlert';
 import { UploadWizard } from './UploadWizard';
 import { QuickUpload } from './QuickUpload';
 import { BulkUploadModal } from './BulkUploadModal';
@@ -21,12 +22,17 @@ export function Dashboard() {
     updateNarrative,
     generateInsights,
     exportSession,
-    insightsError
+    insightsError,
+    insightsErrorCode,
   } = useSession();
   const [showUploadWizard, setShowUploadWizard] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
   const { toast } = useToast();
+
+  const hasFailedSources = session.uploadedSources.some((s) => s.status === 'failed');
+  const hasProcessingSources = session.uploadedSources.some((s) => s.status === 'processing');
 
   const handleExport = () => {
     const data = exportSession();
@@ -45,14 +51,15 @@ export function Dashboard() {
   };
 
   const handleGenerateInsights = async () => {
+    setErrorDismissed(false);
     try {
       await generateInsights();
       toast({
-        title: "Insights generated",
-        description: "AI has analyzed your data and generated insights.",
+        title: 'Insights generated',
+        description: 'AI has analysed your data and generated insights.',
       });
     } catch {
-      // Error is handled in context
+      // Error surfaced via insightsError / insightsErrorCode from context
     }
   };
 
@@ -139,38 +146,72 @@ export function Dashboard() {
       {/* AI Configuration */}
       <AIConfigPanel />
 
-      {/* Generate Insights Button */}
+      {/* Generate Insights Button + Error */}
       {session.uploadedSources.length > 0 && (
-        <div className="flex flex-col items-center gap-3">
+        <div id="ai-config-panel" className="flex flex-col items-center gap-4">
+          {/* Per-source progress summary */}
+          {session.isGeneratingInsights && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Analysing {session.uploadedSources.filter(s => s.status === 'processed').length} of{' '}
+              {session.uploadedSources.length} sources…
+            </div>
+          )}
+
+          {/* Partial-failure notice (some succeeded, some failed) */}
+          {!session.isGeneratingInsights && hasFailedSources && session.analyticsData && (
+            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              Some sources failed — insights based on {session.uploadedSources.filter(s => s.status === 'processed').length} successful source(s).
+            </div>
+          )}
+
+          {/* All-succeeded notice */}
+          {!session.isGeneratingInsights && !hasFailedSources && session.analyticsData && (
+            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 border border-green-200 rounded-xl px-4 py-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              All {session.uploadedSources.length} source(s) analysed successfully.
+            </div>
+          )}
+
           <Button
             size="lg"
             className="rounded-full px-8 gradient-hero border-0"
             onClick={handleGenerateInsights}
-            disabled={session.isGeneratingInsights || !session.aiConfig.enabled}
+            disabled={session.isGeneratingInsights}
           >
             {session.isGeneratingInsights ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Generating Insights...
+                Generating Insights…
+              </>
+            ) : session.analyticsData ? (
+              <>
+                <RotateCcw className="w-5 h-5 mr-2" />
+                Regenerate Insights
               </>
             ) : (
               <>
                 <Sparkles className="w-5 h-5 mr-2" />
-                {session.analyticsData ? 'Regenerate Insights' : 'Generate AI Insights'}
+                Generate AI Insights
               </>
             )}
           </Button>
 
-          {!session.aiConfig.enabled && (
-            <p className="text-sm text-muted-foreground">
-              Enable AI in configuration above to generate real insights
+          {!session.aiConfig.enabled && !insightsError && (
+            <p className="text-sm text-muted-foreground text-center">
+              Enable AI in the configuration panel above to generate insights.
             </p>
           )}
 
-          {insightsError && (
-            <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm max-w-md text-center">
-              {insightsError}
-            </div>
+          {/* Rich error card */}
+          {insightsError && insightsErrorCode && !errorDismissed && (
+            <AIErrorAlert
+              code={insightsErrorCode}
+              rawMessage={insightsError}
+              onRetry={handleGenerateInsights}
+              onDismiss={() => setErrorDismissed(true)}
+            />
           )}
         </div>
       )}

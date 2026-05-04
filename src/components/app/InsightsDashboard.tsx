@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Minus, Star, Lightbulb, Target, Sparkles } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, Lightbulb, Target, Sparkles, BarChart3 } from 'lucide-react';
 import { useSession } from '@/context/SessionContext';
 import { CATEGORY_INFO, Category } from '@/types/session';
 
@@ -24,6 +24,46 @@ export function InsightsDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Extracted Metrics Grid */}
+            {analyticsData.metrics.length > 0 && (
+                <div>
+                    <h3 className="font-display text-xl mb-4 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-accent" />
+                        Extracted Metrics
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {analyticsData.metrics.map((metric, index) => {
+                            const categoryInfo = metric.category ? CATEGORY_INFO[metric.category] : null;
+                            return (
+                                <div
+                                    key={index}
+                                    className="p-4 rounded-xl bg-card shadow-card border border-border/50"
+                                >
+                                    {categoryInfo && (
+                                        <div
+                                            className="w-2 h-2 rounded-full mb-2"
+                                            style={{ backgroundColor: categoryInfo.color }}
+                                        />
+                                    )}
+                                    <p className="text-xs text-muted-foreground mb-1 truncate">{metric.name}</p>
+                                    <p className="text-xl font-display text-foreground leading-tight">
+                                        {metric.value}
+                                        {metric.unit && (
+                                            <span className="text-sm font-normal text-muted-foreground ml-1">
+                                                {metric.unit}
+                                            </span>
+                                        )}
+                                    </p>
+                                    {metric.platform && (
+                                        <p className="text-xs text-muted-foreground mt-1 truncate">{metric.platform}</p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Highlights Grid */}
             {analyticsData.highlights.length > 0 && (

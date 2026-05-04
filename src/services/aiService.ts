@@ -1,388 +1,494 @@
 import { AIConfig, UploadedSource, Category, CATEGORY_INFO } from '@/types/session';
+import { WrapceptionError, fromHttpStatus, toWrapceptionError } from './errors';
+import { detectFromFilename, detectFromContent, type PlatformHint } from './platformDetector';
+import { selectTemplate, buildTemplatePrompt } from './promptTemplates';
+import { compressImage, extractTextFromPDF, pdfFirstPageToImage } from './contentExtractor';
 
-// Analytics response structure from AI
+// ─── Public response types ───────────────────────────────────────────────────
+
 export interface Highlight {
-    id: string;
-    title: string;
-    description: string;
-    category?: Category;
-    metric?: string;
-    icon?: string;
+  id: string;
+  title: string;
+  description: string;
+  category?: Category;
+  metric?: string;
+  icon?: string;
 }
 
 export interface Trend {
-    label: string;
-    direction: 'up' | 'down' | 'stable';
-    value: string;
-    percentChange?: number;
-    category?: Category;
+  label: string;
+  direction: 'up' | 'down' | 'stable';
+  value: string;
+  percentChange?: number;
+  category?: Category;
 }
 
 export interface CategoryStats {
-    category: Category;
-    count: number;
-    topPlatform?: string;
-    keyMetric?: string;
-    insight: string;
+  category: Category;
+  count: number;
+  topPlatform?: string;
+  keyMetric?: string;
+  insight: string;
 }
 
 export interface ExtractedMetricAI {
-    name: string;
-    value: string | number;
-    unit?: string;
-    category?: Category;
-    platform?: string;
+  name: string;
+  value: string | number;
+  unit?: string;
+  category?: Category;
+  platform?: string;
 }
 
 export interface AnalyticsData {
-    yearSummary: string;
-    highlights: Highlight[];
-    metrics: ExtractedMetricAI[];
-    trends: Trend[];
-    categoryBreakdown: CategoryStats[];
-    recommendations: string[];
-    generatedAt: Date;
+  yearSummary: string;
+  highlights: Highlight[];
+  metrics: ExtractedMetricAI[];
+  trends: Trend[];
+  categoryBreakdown: CategoryStats[];
+  recommendations: string[];
+  generatedAt: Date;
 }
 
-// Build the system prompt for analytics extraction
-function buildSystemPrompt(): string {
-    return `You are an analytics expert that extracts structured insights from personal year-in-review data.
-
-You will receive information about a user's uploaded "Wrapped" data from various platforms (Spotify, Strava, Netflix, etc). This may include screenshots of their wrapped summaries, text data, or descriptions.
-
-IMPORTANT: Extract ONLY the data that is ACTUALLY present in the provided content. Do NOT make up or hallucinate any statistics. If you cannot see specific numbers, say so in your response.
-
-Your task is to analyze this data and return a JSON object with the following structure:
-
-{
-  "yearSummary": "A 2-3 sentence engaging narrative summary based on the ACTUAL data provided",
-  "highlights": [
-    {
-      "id": "unique-id",
-      "title": "Short highlight title based on REAL data",
-      "description": "1-2 sentence description of ACTUAL stats",
-      "category": "music|fitness|reading|movies|work|productivity|other",
-      "metric": "The ACTUAL metric from the data, e.g., '500 hours' or 'Top 1%'"
-    }
-  ],
-  "metrics": [
-    {
-      "name": "Metric name",
-      "value": 1234,
-      "unit": "hours|songs|books|miles|etc",
-      "category": "category",
-      "platform": "Platform name"
-    }
-  ],
-  "trends": [
-    {
-      "label": "Trend description based on ACTUAL comparison data if available",
-      "direction": "up|down|stable",
-      "value": "e.g., '25% more than last year' - only if this is REAL data",
-      "percentChange": 25,
-      "category": "category"
-    }
-  ],
-  "categoryBreakdown": [
-    {
-      "category": "music",
-      "count": 1,
-      "topPlatform": "Spotify",
-      "keyMetric": "ACTUAL metric from the data",
-      "insight": "Short insight based on REAL data"
-    }
-  ],
-  "recommendations": [
-    "Forward-looking suggestion based on the ACTUAL data"
-  ]
+/** Result of extracting one source */
+export interface SourceExtraction {
+  sourceId: string;
+  platformHint: PlatformHint;
+  templateId: string;
+  analyticsData: AnalyticsData;
+  confidence: number; // 0–1
+  warnings: string[];
 }
 
-CRITICAL Guidelines:
-- Extract ONLY REAL metrics visible in the images or text provided
-- DO NOT invent statistics, percentages, or comparisons
-- If an image is unclear, describe what you can see
-- If no specific numbers are visible, focus on qualitative insights
-- Keep the tone positive and celebratory
-- Return ONLY valid JSON, no markdown or explanation`;
-}
+// ─── Internal content types ───────────────────────────────────────────────────
 
-// Helper to parse API errors into user-friendly messages
-function parseApiError(errorText: string): string {
+type OpenAITextItem = { type: 'text'; text: string };
+type OpenAIImageItem = { type: 'image_url'; image_url: { url: string; detail: 'high' } };
+type OpenAIContentItem = OpenAITextItem | OpenAIImageItem;
+
+type AnthropicTextItem = { type: 'text'; text: string };
+type AnthropicImageItem = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+type AnthropicContentItem = AnthropicTextItem | AnthropicImageItem;
+
+// ─── Content preparation ──────────────────────────────────────────────────────
+
+/**
+ * Resolve a source's raw content into a string suitable for the AI prompt,
+ * handling image compression and PDF text extraction.
+ */
+async function prepareContent(source: UploadedSource): Promise<{
+  textContent: string | null;
+  imageDataUrl: string | null;
+  warnings: string[];
+}> {
+  const warnings: string[] = [];
+
+  if (source.inputType === 'text') {
+    return { textContent: source.rawContent, imageDataUrl: null, warnings };
+  }
+
+  if (source.inputType === 'image') {
+    if (!source.rawContent || source.rawContent.startsWith('[')) {
+      warnings.push('Image content not available — file may have been lost on page reload.');
+      return { textContent: null, imageDataUrl: null, warnings };
+    }
     try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error?.message) {
-            const msg = parsed.error.message;
-            if (msg.includes('Quota exceeded') || msg.includes('RESOURCE_EXHAUSTED')) {
-                return 'API quota exceeded. Please wait a moment and try again, or check your usage at ai.google.dev/usage';
-            }
-            if (msg.includes('API key not valid') || msg.includes('API_KEY_INVALID')) {
-                return 'Invalid API key. Please check your API key in the configuration.';
-            }
-            if (msg.includes('not found') || msg.includes('NOT_FOUND')) {
-                return 'Model not found. Try selecting a different model (e.g., gemini-2.0-flash).';
-            }
-            // Return first meaningful line
-            return msg.split('\n')[0].slice(0, 150);
-        }
-        return errorText.slice(0, 150);
+      const compressed = await compressImage(source.rawContent);
+      return { textContent: null, imageDataUrl: compressed, warnings };
     } catch {
-        return errorText.slice(0, 150);
+      warnings.push('Image compression failed; using original.');
+      return { textContent: null, imageDataUrl: source.rawContent, warnings };
     }
-}
+  }
 
-// Build Gemini multimodal content with images
-function buildGeminiContent(sources: UploadedSource[], year: number, systemPrompt: string): object[] {
-    const parts: object[] = [];
-
-    // Add system prompt and context
-    let textContent = `${systemPrompt}\n\n`;
-    textContent += `Analyze my ${year} year-in-review data. Here is what I'm sharing:\n\n`;
-
-    // Group sources by category
-    const categoryGroups: Record<Category, UploadedSource[]> = {
-        music: [], fitness: [], reading: [], movies: [], work: [], productivity: [], other: [],
-    };
-    sources.forEach(source => categoryGroups[source.category].push(source));
-
-    // Build content with images inline
-    for (const [category, categorySources] of Object.entries(categoryGroups)) {
-        if (categorySources.length === 0) continue;
-
-        const info = CATEGORY_INFO[category as Category];
-        textContent += `\n## ${info.label}\n`;
-
-        for (const source of categorySources) {
-            textContent += `\n### ${source.platformName}\n`;
-
-            if (source.inputType === 'text') {
-                textContent += source.rawContent + '\n';
-            } else if (source.inputType === 'image' && source.rawContent) {
-                // Add text description before adding image
-                textContent += `[Image from ${source.platformName}`;
-                if (source.notes) textContent += ` - Notes: ${source.notes}`;
-                textContent += `]\n`;
-
-                // Add the text accumulated so far
-                if (textContent.trim()) {
-                    parts.push({ text: textContent });
-                    textContent = '';
-                }
-
-                // Add inline image data
-                // rawContent is base64 data URL: "data:image/png;base64,..."
-                const base64Match = source.rawContent.match(/^data:([^;]+);base64,(.+)$/);
-                if (base64Match) {
-                    const mimeType = base64Match[1];
-                    const base64Data = base64Match[2];
-                    parts.push({
-                        inline_data: {
-                            mime_type: mimeType,
-                            data: base64Data
-                        }
-                    });
-                }
-            } else if (source.inputType === 'pdf') {
-                textContent += `[PDF file: ${source.fileName || 'document'}`;
-                if (source.notes) textContent += ` - Notes: ${source.notes}`;
-                textContent += `]\n`;
-            }
-        }
+  if (source.inputType === 'pdf') {
+    if (!source.rawContent || source.rawContent.startsWith('[')) {
+      warnings.push('PDF content not available — file may have been lost on page reload.');
+      return { textContent: null, imageDataUrl: null, warnings };
     }
-
-    // Add any remaining text
-    if (textContent.trim()) {
-        parts.push({ text: textContent });
-    }
-
-    // Add final instruction
-    parts.push({
-        text: '\n\nBased on the above data and images, extract the analytics and return the JSON response.'
-    });
-
-    return parts;
-}
-
-// Call Gemini API with vision support
-async function callGeminiWithVision(
-    config: AIConfig,
-    sources: UploadedSource[],
-    year: number,
-    systemPrompt: string
-): Promise<string> {
-    const baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-    const url = `${baseUrl}/models/${config.model}:generateContent?key=${config.apiKey}`;
-
-    const parts = buildGeminiContent(sources, year, systemPrompt);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: {
-                temperature: 0.7,
-                responseMimeType: 'application/json',
-            },
-        }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(parseApiError(errorText));
-    }
-
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
-}
-
-// Build text-only message for non-vision APIs
-function buildTextMessage(sources: UploadedSource[], year: number): string {
-    let message = `Analyze my ${year} year-in-review data:\n\n`;
-
-    const categoryGroups: Record<Category, UploadedSource[]> = {
-        music: [], fitness: [], reading: [], movies: [], work: [], productivity: [], other: [],
-    };
-    sources.forEach(source => categoryGroups[source.category].push(source));
-
-    for (const [category, categorySources] of Object.entries(categoryGroups)) {
-        if (categorySources.length === 0) continue;
-        const info = CATEGORY_INFO[category as Category];
-        message += `## ${info.label}\n`;
-
-        for (const source of categorySources) {
-            message += `\n### ${source.platformName}\n`;
-            if (source.inputType === 'text') {
-                message += source.rawContent + '\n';
-            } else {
-                message += `[${source.inputType.toUpperCase()} file: ${source.fileName || 'uploaded'}]\n`;
-                if (source.notes) message += `Notes: ${source.notes}\n`;
-            }
-        }
-        message += '\n';
-    }
-
-    return message;
-}
-
-// Call OpenAI-compatible API
-async function callOpenAIFormat(config: AIConfig, systemPrompt: string, userMessage: string): Promise<string> {
-    const response = await fetch(config.endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-            ...config.headers,
-        },
-        body: JSON.stringify({
-            model: config.model,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userMessage },
-            ],
-            temperature: 0.7,
-            response_format: { type: 'json_object' },
-        }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(parseApiError(errorText));
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-// Call Anthropic API
-async function callAnthropicFormat(config: AIConfig, systemPrompt: string, userMessage: string): Promise<string> {
-    const response = await fetch(config.endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': config.apiKey,
-            'anthropic-version': '2023-06-01',
-            ...config.headers,
-        },
-        body: JSON.stringify({
-            model: config.model,
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userMessage }],
-        }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(parseApiError(errorText));
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-}
-
-// Parse AI response to AnalyticsData
-function parseAnalyticsResponse(rawResponse: string): AnalyticsData {
     try {
-        const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('No JSON found in response');
-
-        const parsed = JSON.parse(jsonMatch[0]);
-
-        return {
-            yearSummary: parsed.yearSummary || 'Your year was full of interesting moments.',
-            highlights: (parsed.highlights || []).map((h: Highlight, i: number) => ({
-                ...h,
-                id: h.id || `highlight-${i}`,
-            })),
-            metrics: parsed.metrics || [],
-            trends: parsed.trends || [],
-            categoryBreakdown: parsed.categoryBreakdown || [],
-            recommendations: parsed.recommendations || [],
-            generatedAt: new Date(),
-        };
-    } catch (error) {
-        console.error('Failed to parse AI response:', error, rawResponse);
-        throw new Error('Failed to parse AI response. The AI may have returned invalid data.');
+      const text = await extractTextFromPDF(source.rawContent);
+      if (text.trim().length < 50) {
+        // Likely a scanned PDF — render first page as image
+        warnings.push('PDF appears to be scanned (no text found). Using first page as image.');
+        try {
+          const imageUrl = await pdfFirstPageToImage(source.rawContent);
+          return { textContent: null, imageDataUrl: imageUrl, warnings };
+        } catch {
+          warnings.push('Could not render scanned PDF as image.');
+          return { textContent: null, imageDataUrl: null, warnings };
+        }
+      }
+      return { textContent: text, imageDataUrl: null, warnings };
+    } catch (err) {
+      if (err instanceof WrapceptionError) throw err;
+      warnings.push(`PDF extraction failed: ${err instanceof Error ? err.message : String(err)}`);
+      return { textContent: null, imageDataUrl: null, warnings };
     }
+  }
+
+  return { textContent: null, imageDataUrl: null, warnings };
 }
 
-// Main function to generate insights
-export async function generateAIInsights(
-    config: AIConfig,
-    sources: UploadedSource[],
-    year: number
+// ─── Per-provider callers ──────────────────────────────────────────────────
+
+async function callGemini(
+  config: AIConfig,
+  systemPrompt: string,
+  textContent: string | null,
+  imageDataUrl: string | null,
+  platformName: string,
+  year: number,
+): Promise<string> {
+  const parts: object[] = [];
+  let textBuffer = `${systemPrompt}\n\nAnalyze my ${year} ${platformName} wrap:\n\n`;
+
+  if (textContent) {
+    textBuffer += textContent;
+  }
+
+  if (imageDataUrl) {
+    textBuffer += `\n[Image from ${platformName}]\n`;
+    parts.push({ text: textBuffer });
+    textBuffer = '';
+    const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+    }
+  }
+
+  textBuffer += '\n\nReturn only valid JSON.';
+  parts.push({ text: textBuffer });
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { temperature: 0.7, responseMimeType: 'application/json' },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw fromHttpStatus(response.status, body, 'Gemini');
+  }
+
+  const data = await response.json();
+  return data.candidates[0].content.parts[0].text;
+}
+
+async function callOpenAI(
+  config: AIConfig,
+  systemPrompt: string,
+  textContent: string | null,
+  imageDataUrl: string | null,
+  platformName: string,
+  year: number,
+): Promise<string> {
+  const userContent: string | OpenAIContentItem[] =
+    config.visionSupported && imageDataUrl
+      ? [
+          { type: 'text', text: `Analyze my ${year} ${platformName} wrap:` },
+          { type: 'image_url', image_url: { url: imageDataUrl, detail: 'high' } },
+          ...(textContent ? [{ type: 'text', text: textContent } as OpenAITextItem] : []),
+        ]
+      : `Analyze my ${year} ${platformName} wrap:\n\n${textContent ?? '[No content available]'}`;
+
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.7,
+  };
+
+  if (config.provider === 'openai' || config.provider === 'groq') {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const response = await fetch(config.endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+      ...config.headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw fromHttpStatus(response.status, bodyText, config.provider);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+async function callAnthropic(
+  config: AIConfig,
+  systemPrompt: string,
+  textContent: string | null,
+  imageDataUrl: string | null,
+  platformName: string,
+  year: number,
+): Promise<string> {
+  const userContent: string | AnthropicContentItem[] =
+    config.visionSupported && imageDataUrl
+      ? (() => {
+          const items: AnthropicContentItem[] = [
+            { type: 'text', text: `Analyze my ${year} ${platformName} wrap:` },
+          ];
+          const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            items.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+          }
+          if (textContent) items.push({ type: 'text', text: textContent });
+          return items;
+        })()
+      : `Analyze my ${year} ${platformName} wrap:\n\n${textContent ?? '[No content available]'}`;
+
+  const response = await fetch(config.endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+      ...config.headers,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
+    }),
+  });
+
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw fromHttpStatus(response.status, bodyText, 'Anthropic');
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+// ─── Response parsing ─────────────────────────────────────────────────────────
+
+function parseAnalyticsResponse(rawResponse: string): AnalyticsData {
+  const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new WrapceptionError(
+      'No JSON found in AI response',
+      'AI_RESPONSE_INVALID',
+    );
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    throw new WrapceptionError('AI returned malformed JSON', 'AI_RESPONSE_INVALID');
+  }
+
+  return {
+    yearSummary: (parsed.yearSummary as string) || 'Your year was full of interesting moments.',
+    highlights: ((parsed.highlights as Highlight[]) || []).map((h, i) => ({
+      ...h,
+      id: h.id || `highlight-${i}`,
+    })),
+    metrics: (parsed.metrics as ExtractedMetricAI[]) || [],
+    trends: (parsed.trends as Trend[]) || [],
+    categoryBreakdown: (parsed.categoryBreakdown as CategoryStats[]) || [],
+    recommendations: (parsed.recommendations as string[]) || [],
+    generatedAt: new Date(),
+  };
+}
+
+// ─── Per-source extraction ────────────────────────────────────────────────────
+
+async function callProvider(
+  config: AIConfig,
+  systemPrompt: string,
+  textContent: string | null,
+  imageDataUrl: string | null,
+  platformName: string,
+  year: number,
+): Promise<string> {
+  switch (config.provider) {
+    case 'gemini':
+      return callGemini(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+    case 'anthropic':
+      return callAnthropic(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+    case 'openai':
+    case 'groq':
+    case 'grok':
+    case 'custom':
+      return callOpenAI(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+    default:
+      throw new WrapceptionError(`Unsupported provider: ${config.provider}`, 'UNKNOWN');
+  }
+}
+
+/** Extract analytics from a single source. Safe to call concurrently. */
+export async function extractSource(
+  source: UploadedSource,
+  config: AIConfig,
+  year: number,
+): Promise<SourceExtraction> {
+  const warnings: string[] = [];
+
+  // Detect platform
+  const filenameHint = detectFromFilename(source.fileName ?? source.platformName);
+  const contentHint =
+    source.inputType === 'text' ? detectFromContent(source.rawContent) : filenameHint;
+  const platformHint = filenameHint.confidence !== 'low' ? filenameHint : contentHint;
+
+  // Override with user-specified platform if detection failed
+  if (!platformHint.platform) {
+    platformHint.platform = source.platformName;
+    platformHint.category = source.category;
+    platformHint.confidence = 'medium';
+  }
+
+  // Select template
+  const template = selectTemplate(platformHint);
+  const systemPrompt = buildTemplatePrompt(template);
+
+  // Prepare content
+  const { textContent, imageDataUrl, warnings: contentWarnings } = await prepareContent(source);
+  warnings.push(...contentWarnings);
+
+  // Warn if image source but provider doesn't support vision
+  if (imageDataUrl && !config.visionSupported) {
+    warnings.push(
+      `${config.provider} does not support images. Only text context will be used. Switch to a vision-capable provider for better results.`,
+    );
+  }
+
+  // Call AI
+  const rawResponse = await callProvider(
+    config,
+    systemPrompt,
+    textContent,
+    imageDataUrl,
+    platformHint.platform ?? source.platformName,
+    year,
+  );
+
+  const analyticsData = parseAnalyticsResponse(rawResponse);
+
+  // Estimate confidence: more metrics = higher confidence
+  const metricCount = analyticsData.metrics.length + analyticsData.highlights.length;
+  const confidence = Math.min(1, metricCount / Math.max(template.expectedMetrics.length, 3));
+
+  return {
+    sourceId: source.id,
+    platformHint,
+    templateId: template.id,
+    analyticsData,
+    confidence,
+    warnings,
+  };
+}
+
+// ─── Cross-source synthesis ───────────────────────────────────────────────────
+
+/**
+ * Synthesise multiple per-source extractions into a unified AnalyticsData.
+ * For a single source, returns it directly (no extra AI call).
+ */
+export async function synthesizeAnalytics(
+  extractions: SourceExtraction[],
+  config: AIConfig,
+  year: number,
 ): Promise<AnalyticsData> {
-    if (!config.apiKey) {
-        throw new Error('API key is required');
+  if (extractions.length === 0) {
+    throw new WrapceptionError('No successful extractions to synthesise', 'NO_SOURCES');
+  }
+
+  if (extractions.length === 1) {
+    return extractions[0].analyticsData;
+  }
+
+  // Aggregate all metrics, highlights, trends
+  const allMetrics = extractions.flatMap((e) => e.analyticsData.metrics);
+  const allHighlights = extractions.flatMap((e) =>
+    e.analyticsData.highlights.map((h, i) => ({ ...h, id: `${e.sourceId}-h${i}` })),
+  );
+  const allTrends = extractions.flatMap((e) => e.analyticsData.trends);
+  const allBreakdown = extractions.flatMap((e) => e.analyticsData.categoryBreakdown);
+  const allRecs = extractions.flatMap((e) => e.analyticsData.recommendations);
+
+  // Build a summary prompt with all extracted data for cross-domain narrative
+  const summaryContext = extractions
+    .map((e) => {
+      const data = e.analyticsData;
+      const metricsText = data.metrics
+        .slice(0, 5)
+        .map((m) => `${m.name}: ${m.value}${m.unit ? ' ' + m.unit : ''}`)
+        .join(', ');
+      return `${e.platformHint.platform ?? 'Unknown'}: ${data.yearSummary} Key stats: ${metricsText || 'see highlights'}`;
+    })
+    .join('\n');
+
+  const crossDomainPrompt = `You are synthesising year-in-review data from multiple platforms into a single unified narrative.
+
+${year} Year Data:
+${summaryContext}
+
+Write a cohesive 2-3 sentence cross-domain year summary that connects insights across ALL platforms (e.g. how fitness correlated with music or work habits). Be specific, use real numbers. Return ONLY valid JSON:
+{ "yearSummary": "...", "recommendations": ["cross-domain recommendation 1", "recommendation 2", "recommendation 3"] }`;
+
+  let crossNarrative = { yearSummary: '', recommendations: [] as string[] };
+
+  try {
+    const raw = await callProvider(config, '', crossDomainPrompt, null, 'combined', year);
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      crossNarrative.yearSummary = parsed.yearSummary ?? '';
+      crossNarrative.recommendations = parsed.recommendations ?? [];
     }
-    if (sources.length === 0) {
-        throw new Error('No sources to analyze');
+  } catch {
+    // Fallback: use first source's summary
+    crossNarrative.yearSummary = extractions[0].analyticsData.yearSummary;
+    crossNarrative.recommendations = allRecs.slice(0, 3);
+  }
+
+  return {
+    yearSummary: crossNarrative.yearSummary || extractions[0].analyticsData.yearSummary,
+    highlights: allHighlights,
+    metrics: allMetrics,
+    trends: allTrends,
+    categoryBreakdown: allBreakdown,
+    recommendations: crossNarrative.recommendations.length > 0 ? crossNarrative.recommendations : allRecs,
+    generatedAt: new Date(),
+  };
+}
+
+// ─── Legacy batch function (kept for backward compat during refactor) ─────────
+
+/** @deprecated Use extractSource + synthesizeAnalytics instead. */
+export async function generateAIInsights(
+  config: AIConfig,
+  sources: UploadedSource[],
+  year: number,
+): Promise<AnalyticsData> {
+  if (!config.apiKey) throw new WrapceptionError('API key is required', 'NO_API_KEY');
+  if (sources.length === 0) throw new WrapceptionError('No sources to analyze', 'NO_SOURCES');
+
+  const extractions: SourceExtraction[] = [];
+  for (const source of sources) {
+    try {
+      const extraction = await extractSource(source, config, year);
+      extractions.push(extraction);
+    } catch (err) {
+      throw toWrapceptionError(err);
     }
+  }
 
-    const systemPrompt = buildSystemPrompt();
-    let rawResponse: string;
-
-    // Use vision-enabled call for Gemini (supports images)
-    if (config.provider === 'gemini') {
-        rawResponse = await callGeminiWithVision(config, sources, year, systemPrompt);
-    } else {
-        // Text-only for other providers
-        const userMessage = buildTextMessage(sources, year);
-
-        switch (config.provider) {
-            case 'openai':
-            case 'groq':
-            case 'grok':
-            case 'custom':
-                rawResponse = await callOpenAIFormat(config, systemPrompt, userMessage);
-                break;
-            case 'anthropic':
-                rawResponse = await callAnthropicFormat(config, systemPrompt, userMessage);
-                break;
-            default:
-                throw new Error(`Unsupported provider: ${config.provider}`);
-        }
-    }
-
-    return parseAnalyticsResponse(rawResponse);
+  return synthesizeAnalytics(extractions, config, year);
 }

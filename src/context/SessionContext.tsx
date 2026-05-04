@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { saveSourceContent, deleteSourceContent, loadAllSourceContent, clearAllSourceContent } from '@/services/storage';
 import {
   SessionState,
   UploadedSource,
@@ -7,7 +8,8 @@ import {
   AIConfig,
   AnalyticsData,
 } from '@/types/session';
-import { generateAIInsights } from '@/services/aiService';
+import { extractSource, synthesizeAnalytics, type SourceExtraction } from '@/services/aiService';
+import { WrapceptionError, toWrapceptionError, type ErrorCode } from '@/services/errors';
 
 const STORAGE_KEY = 'wrapception_session';
 
@@ -73,6 +75,7 @@ interface SessionContextType {
   resetSession: () => void;
   exportSession: () => string;
   insightsError: string | null;
+  insightsErrorCode: ErrorCode | null;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -80,6 +83,25 @@ const SessionContext = createContext<SessionContextType | undefined>(undefined);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionState>(getInitialSession);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [insightsErrorCode, setInsightsErrorCode] = useState<ErrorCode | null>(null);
+
+  // On mount: restore file content from IndexedDB for sources that lost it during last save
+  useEffect(() => {
+    const missing = session.uploadedSources.filter(
+      (s) => s.inputType !== 'text' && s.rawContent === '[File stored in memory]'
+    );
+    if (missing.length === 0) return;
+
+    loadAllSourceContent(missing.map((s) => s.id)).then((contentMap) => {
+      if (Object.keys(contentMap).length === 0) return;
+      setSession((prev) => ({
+        ...prev,
+        uploadedSources: prev.uploadedSources.map((s) =>
+          contentMap[s.id] ? { ...s, rawContent: contentMap[s.id] } : s
+        ),
+      }));
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSession = useCallback(() => {
     try {
@@ -109,6 +131,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       createdAt: new Date(),
       status: 'uploaded',
     };
+    // Persist file content to IndexedDB so it survives page reload
+    if (newSource.inputType !== 'text' && newSource.rawContent) {
+      saveSourceContent(newSource.id, newSource.rawContent);
+    }
     setSession(prev => ({
       ...prev,
       uploadedSources: [...prev.uploadedSources, newSource],
@@ -116,6 +142,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeSource = useCallback((id: string) => {
+    deleteSourceContent(id);
     setSession(prev => ({
       ...prev,
       uploadedSources: prev.uploadedSources.filter(s => s.id !== id),
@@ -161,37 +188,80 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const generateInsights = useCallback(async () => {
     setInsightsError(null);
-
-    // Set loading state
+    setInsightsErrorCode(null);
     setSession(prev => ({ ...prev, isGeneratingInsights: true }));
 
     try {
-      const currentSession = session;
+      const { aiConfig, uploadedSources, year } = session;
 
-      if (!currentSession.aiConfig.enabled) {
-        throw new Error('AI is not enabled. Please enable AI and configure your API key.');
+      // Pre-flight validation with typed errors
+      if (!aiConfig.enabled) {
+        throw new WrapceptionError('AI is not enabled.', 'AI_NOT_ENABLED');
+      }
+      if (!aiConfig.apiKey) {
+        throw new WrapceptionError('API key is missing.', 'NO_API_KEY');
+      }
+      if (uploadedSources.length === 0) {
+        throw new WrapceptionError('No sources uploaded.', 'NO_SOURCES');
       }
 
-      if (!currentSession.aiConfig.apiKey) {
-        throw new Error('API key is required. Please enter your API key in AI Configuration.');
+      // Per-source extraction — failures are isolated
+      const successful: SourceExtraction[] = [];
+
+      for (const source of uploadedSources) {
+        // Mark source as processing
+        setSession(prev => ({
+          ...prev,
+          uploadedSources: prev.uploadedSources.map(s =>
+            s.id === source.id ? { ...s, status: 'processing' as const, extractionError: undefined } : s
+          ),
+        }));
+
+        try {
+          const extraction = await extractSource(source, aiConfig, year);
+          successful.push(extraction);
+
+          setSession(prev => ({
+            ...prev,
+            uploadedSources: prev.uploadedSources.map(s =>
+              s.id === source.id ? { ...s, status: 'processed' as const } : s
+            ),
+          }));
+        } catch (sourceErr) {
+          const wrapped = toWrapceptionError(sourceErr);
+          setSession(prev => ({
+            ...prev,
+            uploadedSources: prev.uploadedSources.map(s =>
+              s.id === source.id
+                ? { ...s, status: 'failed' as const, extractionError: wrapped.message }
+                : s
+            ),
+          }));
+          // Continue with other sources unless it's an auth/key error (affects all)
+          if (
+            wrapped.code === 'AI_API_UNAUTHORIZED' ||
+            wrapped.code === 'NO_API_KEY' ||
+            wrapped.code === 'AI_NOT_ENABLED'
+          ) {
+            throw wrapped;
+          }
+        }
       }
 
-      if (currentSession.uploadedSources.length === 0) {
-        throw new Error('No sources to analyze. Please upload some data first.');
+      if (successful.length === 0) {
+        throw new WrapceptionError(
+          'All sources failed to extract. Check errors on each source card.',
+          'NO_SOURCES',
+        );
       }
 
-      const analyticsData = await generateAIInsights(
-        currentSession.aiConfig,
-        currentSession.uploadedSources,
-        currentSession.year
-      );
+      const analyticsData = await synthesizeAnalytics(successful, aiConfig, year);
 
-      // Convert analytics to insights format for backward compatibility
       const aiInsights: AIInsight[] = analyticsData.highlights.map(h => ({
         id: h.id,
         content: `**${h.title}**: ${h.description}`,
         category: h.category,
-        sourceIds: currentSession.uploadedSources.map(s => s.id),
+        sourceIds: uploadedSources.map(s => s.id),
         isEdited: false,
       }));
 
@@ -205,13 +275,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     } catch (error) {
       console.error('Failed to generate insights:', error);
-      setInsightsError(error instanceof Error ? error.message : 'Failed to generate insights');
+      const wrapped = toWrapceptionError(error);
+      setInsightsError(wrapped.message);
+      setInsightsErrorCode(wrapped.code);
       setSession(prev => ({ ...prev, isGeneratingInsights: false }));
     }
   }, [session]);
 
   const resetSession = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
+    clearAllSourceContent();
     setSession({
       year: new Date().getFullYear(),
       uploadedSources: [],
@@ -253,6 +326,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       resetSession,
       exportSession,
       insightsError,
+      insightsErrorCode,
     }}>
       {children}
     </SessionContext.Provider>
