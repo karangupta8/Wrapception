@@ -1,6 +1,8 @@
 import { TrendingUp, TrendingDown, Minus, Star, Lightbulb, Target, Sparkles, BarChart3 } from 'lucide-react';
 import { useSession } from '@/context/SessionContext';
 import { CATEGORY_INFO, Category } from '@/types/session';
+import { selectCharts, getChartDimensions } from '@/services/chartSelector';
+import { DynamicChartRenderer } from './DynamicChartRenderer';
 
 export function InsightsDashboard() {
     const { session } = useSession();
@@ -24,6 +26,33 @@ export function InsightsDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Dynamic Charts */}
+            {(() => {
+                const charts = selectCharts(analyticsData);
+                if (charts.length === 0) return null;
+                return (
+                    <div>
+                        <h3 className="font-display text-xl mb-4">Your Year in Charts</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {charts.map(chart => {
+                                const dims = getChartDimensions(chart.type);
+                                return (
+                                    <div
+                                        key={chart.id}
+                                        className={`lg:col-span-${dims.colSpan}`}
+                                    >
+                                        <DynamicChartRenderer
+                                            chart={chart}
+                                            height={dims.minHeight}
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Extracted Metrics Grid */}
             {analyticsData.metrics.length > 0 && (
