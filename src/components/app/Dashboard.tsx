@@ -15,6 +15,7 @@ import { PlatformBarChart } from './PlatformBarChart';
 import { InsightsDashboard } from './InsightsDashboard';
 import { ExtractionProgress } from './ExtractionProgress';
 import { ExtractionValidationPanel } from './ExtractionValidationPanel';
+import { CostEstimateModal } from './CostEstimateModal';
 import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
@@ -31,6 +32,7 @@ export function Dashboard() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
+  const [showCostModal, setShowCostModal] = useState(false);
   const { toast } = useToast();
 
   const hasFailedSources = session.uploadedSources.some((s) => s.status === 'failed');
@@ -52,7 +54,12 @@ export function Dashboard() {
     });
   };
 
-  const handleGenerateInsights = async () => {
+  const handleGenerateInsights = () => {
+    setShowCostModal(true);
+  };
+
+  const handleConfirmCost = async () => {
+    setShowCostModal(false);
     setErrorDismissed(false);
     try {
       await generateInsights();
@@ -78,6 +85,14 @@ export function Dashboard() {
     <div className="space-y-8">
       {/* Bulk Upload Modal */}
       <BulkUploadModal open={showBulkUpload} onOpenChange={setShowBulkUpload} />
+
+      {/* Cost Estimate Modal */}
+      <CostEstimateModal
+        open={showCostModal}
+        sources={session.uploadedSources.filter(s => s.status === 'uploaded' || s.status === 'failed')}
+        onConfirm={handleConfirmCost}
+        onCancel={() => setShowCostModal(false)}
+      />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
