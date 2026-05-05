@@ -10,7 +10,7 @@ interface DemoModeProps {
 }
 
 export function DemoMode({ onExit }: DemoModeProps) {
-  const { session, loadDemoData, setYear } = useSession();
+  const { session, loadDemoData, setYear, resetSession } = useSession();
 
   useEffect(() => {
     // Load demo data on mount
@@ -26,6 +26,11 @@ export function DemoMode({ onExit }: DemoModeProps) {
     // Load demo data into session
     loadDemoData(processedSources, SAMPLE_ANALYTICS_DATA);
   }, [setYear, loadDemoData]);
+
+  const handleExit = () => {
+    resetSession();
+    onExit();
+  };
 
   return (
     <div className="relative">
@@ -44,7 +49,7 @@ export function DemoMode({ onExit }: DemoModeProps) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={onExit}
+            onClick={handleExit}
             className="text-amber-600 hover:text-amber-700 hover:bg-amber-100"
           >
             <X className="w-5 h-5" />

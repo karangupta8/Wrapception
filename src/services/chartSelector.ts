@@ -1,4 +1,4 @@
-import { AnalyticsData } from '@/types/session';
+import { AnalyticsData, CATEGORY_INFO, Category } from '@/types/session';
 
 export interface ChartConfig {
   id: string;
@@ -8,71 +8,96 @@ export interface ChartConfig {
   data: unknown;
 }
 
+export interface PieDatum {
+  name: string;
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+export interface BarDatum {
+  name: string;
+  value: number;
+  color: string;
+}
+
+const KNOWN_CATEGORIES = Object.keys(CATEGORY_INFO) as Category[];
+
+/** Try to resolve any string to a known category (case-insensitive, partial match). */
+function resolveCategory(raw: string | undefined): Category | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase().trim();
+  if (KNOWN_CATEGORIES.includes(lower as Category)) return lower as Category;
+  // Common aliases
+  const aliases: Record<string, Category> = {
+    audio: 'music',
+    listening: 'music',
+    songs: 'music',
+    health: 'fitness',
+    workout: 'fitness',
+    running: 'fitness',
+    books: 'reading',
+    learning: 'reading',
+    film: 'movies',
+    tv: 'movies',
+    coding: 'work',
+    github: 'work',
+    productivity: 'productivity',
+  };
+  if (aliases[lower]) return aliases[lower];
+  for (const alias of Object.keys(aliases)) {
+    if (lower.includes(alias)) return aliases[alias];
+  }
+  return null;
+}
+
+function categoryLabel(raw: string): string {
+  const known = resolveCategory(raw);
+  if (known) return CATEGORY_INFO[known].label;
+  // Capitalize first letter of unknown categories
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function categoryColor(raw: string, fallbackIndex: number): string {
+  const known = resolveCategory(raw);
+  if (known) return CATEGORY_INFO[known].color;
+  const palette = [
+    'hsl(280 60% 60%)',
+    'hsl(0 70% 60%)',
+    'hsl(45 80% 55%)',
+    'hsl(200 70% 55%)',
+    'hsl(160 60% 45%)',
+    'hsl(35 90% 55%)',
+    'hsl(220 20% 50%)',
+    'hsl(320 50% 60%)',
+    'hsl(110 50% 50%)',
+    'hsl(250 60% 65%)',
+  ];
+  return palette[fallbackIndex % palette.length];
+}
+
 export function selectCharts(data: AnalyticsData): ChartConfig[] {
   const charts: ChartConfig[] = [];
 
-  // 1. Category distribution pie chart
-  if (data.categoryBreakdown && data.categoryBreakdown.length > 0) {
-    const pieData = data.categoryBreakdown.map(stat => ({
-      name: stat.category,
-      value: stat.count,
-    }));
+  // Category distribution chart intentionally omitted — AI categoryBreakdown
+  // is too unreliable (often returns regions, topics, or non-categories).
+  // The Category Insights section handles known categories with proper labels.
 
-    // Only show pie if we have 2-8 categories
-    if (pieData.length >= 2 && pieData.length <= 8) {
-      charts.push({
-        id: 'category-pie',
-        type: 'pie',
-        title: 'Distribution by Category',
-        description: 'How your year breaks down across categories',
-        data: pieData,
-      });
-    }
-
-    // Show horizontal bar chart for more categories (7+)
-    if (pieData.length > 8) {
-      charts.push({
-        id: 'category-bar',
-        type: 'bar',
-        title: 'Category Breakdown',
-        description: 'Total count by category',
-        data: pieData,
-      });
-    }
-  }
-
-  // 2. Trends as trend cards
-  if (data.trends && data.trends.length > 0) {
-    data.trends.forEach((trend, idx) => {
-      charts.push({
-        id: `trend-${idx}`,
-        type: 'trend',
-        title: trend.label,
-        description: trend.value,
-        data: {
-          title: trend.label,
-          description: trend.value,
-          direction: trend.direction,
-          category: trend.category,
-        },
-      });
-    });
-  }
-
-  // 3. Highlight cards (shown as trend cards in UI)
-  if (data.highlights && data.highlights.length > 0) {
-    data.highlights.forEach((highlight, idx) => {
-      charts.push({
-        id: `highlight-${idx}`,
-        type: 'trend',
-        title: highlight.title,
-        description: highlight.description,
-        data: {
-          title: highlight.title,
-          description: highlight.description,
-          category: highlight.category,
-        },
-      });
+  // Trend velocity bar — show direction-aware percentChange when available
+  const trendsWithChange = (data.trends || []).filter(
+    (t) => typeof t.percentChange === 'number' && Number.isFinite(t.percentChange),
+  );
+  if (trendsWithChange.length >= 2) {
+    charts.push({
+      id: 'trend-velocity',
+      type: 'bar',
+      title: 'Year-over-Year Momentum',
+      description: 'Where you grew, held steady, or pulled back',
+      data: trendsWithChange.map((t, idx) => ({
+        name: t.label,
+        value: t.direction === 'down' ? -Math.abs(t.percentChange!) : Math.abs(t.percentChange!),
+        color: categoryColor(t.category ?? '', idx),
+      })) as BarDatum[],
     });
   }
 
@@ -85,16 +110,18 @@ export function getChartDimensions(type: ChartConfig['type']): {
 } {
   switch (type) {
     case 'pie':
-      return { colSpan: 1, minHeight: '300px' };
+      return { colSpan: 1, minHeight: '320px' };
     case 'radar':
       return { colSpan: 1, minHeight: '350px' };
     case 'line':
       return { colSpan: 2, minHeight: '300px' };
     case 'bar':
-      return { colSpan: 2, minHeight: '300px' };
+      return { colSpan: 2, minHeight: '320px' };
     case 'trend':
       return { colSpan: 1, minHeight: '200px' };
     default:
       return { colSpan: 1, minHeight: '250px' };
   }
 }
+
+export { resolveCategory, categoryLabel, categoryColor };

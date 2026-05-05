@@ -751,26 +751,46 @@ export async function synthesizeAnalytics(
     estimatedTokens,
   });
 
-  // Build a summary prompt with all extracted data for cross-domain narrative
+  // Build a richer, structured context for cross-domain synthesis
   const summaryContext = extractions
     .map((e) => {
       const data = e.analyticsData;
       const metricsText = data.metrics
-        .slice(0, 5)
-        .map((m) => `${m.name}: ${m.value}${m.unit ? ' ' + m.unit : ''}`)
+        .slice(0, 8)
+        .map((m) => `${m.name}=${m.value}${m.unit ? ' ' + m.unit : ''}`)
+        .join('; ');
+      const highlightsText = data.highlights
+        .slice(0, 3)
+        .map((h) => `"${h.title}: ${h.description}"`)
+        .join(' | ');
+      const trendsText = data.trends
+        .slice(0, 3)
+        .map((t) => `${t.label} ${t.direction}${t.percentChange ? ` ${t.percentChange}%` : ''}`)
         .join(', ');
-      const confidence = (e.confidence * 100).toFixed(0);
-      return `${e.platformHint.platform ?? 'Unknown'} (confidence ${confidence}%): ${data.yearSummary} Key stats: ${metricsText || 'see highlights'}`;
+      return `[${e.platformHint.platform ?? 'Unknown'}]
+  Summary: ${data.yearSummary}
+  Metrics: ${metricsText || '(none)'}
+  Highlights: ${highlightsText || '(none)'}
+  Trends: ${trendsText || '(none)'}`;
     })
-    .join('\n');
+    .join('\n\n');
 
-  const crossDomainPrompt = `You are synthesising year-in-review data from multiple platforms into a single unified narrative.
+  const crossDomainPrompt = `You are a year-in-review writer synthesising data from ${extractions.length} platforms into ONE unified narrative for ${year}.
 
-${year} Year Data:
+DATA:
 ${summaryContext}
 
-Write a cohesive 2-3 sentence cross-domain year summary that connects insights across ALL platforms (e.g. how fitness correlated with music or work habits). Be specific, use real numbers. Return ONLY valid JSON:
-{ "yearSummary": "...", "recommendations": ["cross-domain recommendation 1", "recommendation 2", "recommendation 3"] }`;
+WRITE:
+1. yearSummary — 3-4 sentences. Cite at least 3 specific numbers from the data above. Make a non-obvious cross-domain connection (e.g. how listening volume tracked with workouts, or how reading correlated with quieter weeks). DO NOT use phrases like "balanced lifestyle", "self-improvement and exploration", "diverse engagement", or any generic platitudes. Be concrete, observational, and a little dry — like a friend who actually paid attention.
+
+2. recommendations — exactly 3 items. Each MUST:
+   - Reference specific data above (a number, platform, artist, book, etc.)
+   - Be actionable and unusual (not "set a reading goal" or "explore similar music")
+   - Connect TWO domains where possible (e.g. "your top artist X averages 120 BPM — try them on your next run")
+   AVOID: generic motivational advice, "consider exploring", "try setting goals", anything that could apply to anyone.
+
+Return ONLY valid JSON, no markdown fences:
+{ "yearSummary": "...", "recommendations": ["...", "...", "..."] }`;
 
   logger.debug('aiService', 'Calling AI for cross-domain synthesis');
 
@@ -818,12 +838,35 @@ Write a cohesive 2-3 sentence cross-domain year summary that connects insights a
     throw wrappedErr;
   }
 
+  // De-duplicate metrics by normalised name+platform so the UI doesn't show
+  // near-duplicates like "Total Listening Time" and "Minutes Listened" from the
+  // same platform.
+  const metricsByKey = new Map<string, ExtractedMetricAI>();
+  for (const m of allMetrics) {
+    const key = `${(m.name ?? '').toLowerCase().trim()}|${(m.platform ?? '').toLowerCase().trim()}`;
+    if (!metricsByKey.has(key)) metricsByKey.set(key, m);
+  }
+
+  // De-duplicate categoryBreakdown by category (sum counts, keep first insight)
+  const breakdownByCategory = new Map<string, typeof allBreakdown[number]>();
+  for (const b of allBreakdown) {
+    const existing = breakdownByCategory.get(b.category);
+    if (!existing) {
+      breakdownByCategory.set(b.category, { ...b });
+    } else {
+      breakdownByCategory.set(b.category, {
+        ...existing,
+        count: (existing.count || 0) + (b.count || 0),
+      });
+    }
+  }
+
   return {
     yearSummary: crossNarrative.yearSummary,
     highlights: allHighlights,
-    metrics: allMetrics,
+    metrics: Array.from(metricsByKey.values()),
     trends: allTrends,
-    categoryBreakdown: allBreakdown,
+    categoryBreakdown: Array.from(breakdownByCategory.values()),
     recommendations: crossNarrative.recommendations.length > 0 ? crossNarrative.recommendations : allRecs,
     generatedAt: new Date(),
   };
