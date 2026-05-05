@@ -6,9 +6,7 @@ import { useSession } from '@/context/SessionContext';
 import { SourceCard } from './SourceCard';
 import { AIConfigPanel } from './AIConfigPanel';
 import { AIErrorAlert } from './AIErrorAlert';
-import { UploadWizard } from './UploadWizard';
-import { QuickUpload } from './QuickUpload';
-import { BulkUploadModal } from './BulkUploadModal';
+import { UploadPanel } from './UploadPanel';
 import { StatsOverview } from './StatsOverview';
 import { CategoryPieChart } from './CategoryPieChart';
 import { PlatformBarChart } from './PlatformBarChart';
@@ -29,8 +27,6 @@ export function Dashboard() {
     insightsError,
     insightsErrorCode,
   } = useSession();
-  const [showUploadWizard, setShowUploadWizard] = useState(false);
-  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
@@ -73,19 +69,8 @@ export function Dashboard() {
     }
   };
 
-  if (showUploadWizard) {
-    return (
-      <UploadWizard
-        onComplete={() => setShowUploadWizard(false)}
-        onCancel={() => setShowUploadWizard(false)}
-      />
-    );
-  }
-
   return (
     <div className="space-y-8">
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal open={showBulkUpload} onOpenChange={setShowBulkUpload} />
 
       {/* Cost Estimate Modal */}
       <CostEstimateModal
@@ -110,33 +95,22 @@ export function Dashboard() {
             <FileJson className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
-            <FolderUp className="w-4 h-4 mr-2" />
-            Bulk Upload
-          </Button>
-          <Button size="sm" onClick={() => setShowUploadWizard(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Wrap
-          </Button>
         </div>
       </div>
 
       {/* Stats Overview */}
       <StatsOverview />
 
-      {/* Quick Upload + Charts Row */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Quick Upload */}
-        <QuickUpload className="lg:col-span-1" />
+      {/* Inline Upload Panel */}
+      <UploadPanel />
 
-        {/* Charts */}
-        {session.uploadedSources.length > 0 && (
-          <>
-            <CategoryPieChart />
-            <PlatformBarChart />
-          </>
-        )}
-      </div>
+      {/* Charts Row */}
+      {session.uploadedSources.length > 0 && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <CategoryPieChart />
+          <PlatformBarChart />
+        </div>
+      )}
 
       {/* Uploaded Sources */}
       <div>
