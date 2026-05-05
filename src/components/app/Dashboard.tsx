@@ -16,6 +16,7 @@ import { InsightsDashboard } from './InsightsDashboard';
 import { ExtractionProgress } from './ExtractionProgress';
 import { ExtractionValidationPanel } from './ExtractionValidationPanel';
 import { CostEstimateModal } from './CostEstimateModal';
+import { DebugPanel } from './DebugPanel';
 import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
@@ -247,9 +248,9 @@ export function Dashboard() {
             )}
           </Button>
 
-          {!session.aiConfig.enabled && !insightsError && (
+          {!session.aiConfigs?.[session.activeProvider]?.apiKey && !insightsError && (
             <p className="text-sm text-muted-foreground text-center">
-              Enable AI in the configuration panel above to generate insights.
+              Add an API key in the configuration panel above to generate insights.
             </p>
           )}
 
@@ -296,6 +297,11 @@ export function Dashboard() {
           )}
         </div>
       )}
+
+      {/* Debug Panel */}
+      <div className="pt-8 border-t border-border/50">
+        <DebugPanel />
+      </div>
     </div>
   );
 }

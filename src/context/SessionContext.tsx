@@ -11,6 +11,7 @@ import {
 } from '@/types/session';
 import { extractSource, synthesizeAnalytics, type SourceExtraction } from '@/services/aiService';
 import { WrapceptionError, toWrapceptionError, type ErrorCode } from '@/services/errors';
+import { logger } from '@/services/logger';
 
 const STORAGE_KEY = 'wrapception_session';
 
@@ -61,6 +62,11 @@ const getInitialSession = (): SessionState => {
       // Ensure new fields exist
       parsed.analyticsData = parsed.analyticsData || null;
       parsed.isGeneratingInsights = false;
+      // Migrate: old sessions had aiConfig (singular), new ones have aiConfigs + activeProvider
+      if (!parsed.aiConfigs) {
+        parsed.aiConfigs = getDefaultAIConfigs();
+        parsed.activeProvider = 'openai';
+      }
       return parsed;
     }
   } catch (e) {
@@ -223,6 +229,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setInsightsErrorCode(null);
     setSession(prev => ({ ...prev, isGeneratingInsights: true }));
 
+    logger.info('SessionContext', `Starting insights generation for ${session.uploadedSources.length} sources`);
+
     try {
       const { aiConfigs, activeProvider, uploadedSources, year } = session;
       const aiConfig = aiConfigs[activeProvider];
@@ -239,6 +247,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const successful: SourceExtraction[] = [];
 
       for (const source of uploadedSources) {
+        logger.info('SessionContext', `Extracting source: ${source.name}`, { sourceId: source.id });
+
         // Mark source as processing
         setSession(prev => ({
           ...prev,
@@ -250,6 +260,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
           const extraction = await extractSource(source, aiConfig, year);
           successful.push(extraction);
+          logger.info('SessionContext', `Source extracted successfully: ${source.name}`, {
+            sourceId: source.id,
+            platform: extraction.detectedPlatform,
+            confidence: extraction.confidence,
+          });
 
           setSession(prev => ({
             ...prev,
@@ -259,6 +274,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }));
         } catch (sourceErr) {
           const wrapped = toWrapceptionError(sourceErr);
+          logger.error('SessionContext', `Source extraction failed: ${source.name}`, wrapped, {
+            sourceId: source.id,
+            errorCode: wrapped.code,
+          });
+
           setSession(prev => ({
             ...prev,
             uploadedSources: prev.uploadedSources.map(s =>
@@ -285,7 +305,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      logger.info('SessionContext', `Synthesizing analytics from ${successful.length} sources`);
       const analyticsData = await synthesizeAnalytics(successful, aiConfig, year);
+      logger.info('SessionContext', 'Analytics synthesis completed', {
+        highlights: analyticsData.highlights.length,
+        trends: analyticsData.trends.length,
+      });
 
       const aiInsights: AIInsight[] = analyticsData.highlights.map(h => ({
         id: h.id,
@@ -303,9 +328,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         narrativeSummary: analyticsData.yearSummary,
       }));
 
+      logger.info('SessionContext', 'Insights generation completed successfully');
+
     } catch (error) {
-      console.error('Failed to generate insights:', error);
       const wrapped = toWrapceptionError(error);
+      logger.error('SessionContext', 'Insights generation failed', wrapped, {
+        errorCode: wrapped.code,
+      });
+
       setInsightsError(wrapped.message);
       setInsightsErrorCode(wrapped.code);
       setSession(prev => ({ ...prev, isGeneratingInsights: false }));

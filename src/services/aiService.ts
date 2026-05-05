@@ -3,6 +3,7 @@ import { WrapceptionError, fromHttpStatus, toWrapceptionError } from './errors';
 import { detectFromFilename, detectFromContent, type PlatformHint } from './platformDetector';
 import { selectTemplate, buildTemplatePrompt } from './promptTemplates';
 import { compressImage, extractTextFromPDF, pdfFirstPageToImage } from './contentExtractor';
+import { logger } from './logger';
 
 // ─── Public response types ───────────────────────────────────────────────────
 
@@ -340,6 +341,8 @@ export async function extractSource(
 ): Promise<SourceExtraction> {
   const warnings: string[] = [];
 
+  logger.debug('aiService', `Starting extraction for ${source.name}`, { sourceId: source.id, type: source.inputType });
+
   // Detect platform
   const filenameHint = detectFromFilename(source.fileName ?? source.platformName);
   const contentHint =
@@ -352,6 +355,11 @@ export async function extractSource(
     platformHint.category = source.category;
     platformHint.confidence = 'medium';
   }
+
+  logger.debug('aiService', `Platform detected: ${platformHint.platform}`, {
+    sourceId: source.id,
+    confidence: platformHint.confidence,
+  });
 
   // Select template
   const template = selectTemplate(platformHint);
@@ -368,6 +376,13 @@ export async function extractSource(
     );
   }
 
+  logger.debug('aiService', `Calling ${config.provider} for extraction`, {
+    sourceId: source.id,
+    model: config.model,
+    hasImage: !!imageDataUrl,
+    hasText: !!textContent,
+  });
+
   // Call AI
   const rawResponse = await callProvider(
     config,
@@ -383,6 +398,14 @@ export async function extractSource(
   // Estimate confidence: more metrics = higher confidence
   const metricCount = analyticsData.metrics.length + analyticsData.highlights.length;
   const confidence = Math.min(1, metricCount / Math.max(template.expectedMetrics.length, 3));
+
+  logger.info('aiService', `Extraction completed: ${source.name}`, {
+    sourceId: source.id,
+    platform: platformHint.platform,
+    confidence: confidence.toFixed(2),
+    metricsExtracted: metricCount,
+    warnings: warnings.length,
+  });
 
   return {
     sourceId: source.id,
@@ -409,7 +432,12 @@ export async function synthesizeAnalytics(
     throw new WrapceptionError('No successful extractions to synthesise', 'NO_SOURCES');
   }
 
+  logger.info('aiService', `Synthesizing ${extractions.length} extractions`, {
+    platforms: extractions.map((e) => e.platformHint.platform).join(', '),
+  });
+
   if (extractions.length === 1) {
+    logger.debug('aiService', 'Single source synthesis - returning direct extraction');
     return extractions[0].analyticsData;
   }
 
@@ -421,6 +449,12 @@ export async function synthesizeAnalytics(
   const allTrends = extractions.flatMap((e) => e.analyticsData.trends);
   const allBreakdown = extractions.flatMap((e) => e.analyticsData.categoryBreakdown);
   const allRecs = extractions.flatMap((e) => e.analyticsData.recommendations);
+
+  logger.debug('aiService', 'Aggregated extraction data', {
+    totalMetrics: allMetrics.length,
+    totalHighlights: allHighlights.length,
+    totalTrends: allTrends.length,
+  });
 
   // Build a summary prompt with all extracted data for cross-domain narrative
   const summaryContext = extractions
@@ -445,6 +479,7 @@ Write a cohesive 2-3 sentence cross-domain year summary that connects insights a
   let crossNarrative = { yearSummary: '', recommendations: [] as string[] };
 
   try {
+    logger.debug('aiService', 'Calling AI for cross-domain synthesis');
     const raw = await callProvider(config, '', crossDomainPrompt, null, 'combined', year);
     const match = raw.match(/\{[\s\S]*\}/);
     if (match) {
@@ -452,7 +487,11 @@ Write a cohesive 2-3 sentence cross-domain year summary that connects insights a
       crossNarrative.yearSummary = parsed.yearSummary ?? '';
       crossNarrative.recommendations = parsed.recommendations ?? [];
     }
-  } catch {
+    logger.debug('aiService', 'Cross-domain synthesis completed');
+  } catch (err) {
+    logger.warn('aiService', 'Cross-domain synthesis failed, using fallback', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Fallback: use first source's summary
     crossNarrative.yearSummary = extractions[0].analyticsData.yearSummary;
     crossNarrative.recommendations = allRecs.slice(0, 3);

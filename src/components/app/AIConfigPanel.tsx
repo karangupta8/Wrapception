@@ -15,8 +15,8 @@ export function AIConfigPanel() {
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
 
   const { aiConfigs, activeProvider } = session;
-  const activeConfig = aiConfigs[activeProvider];
-  const activeProviderInfo = AI_PROVIDERS[activeProvider];
+  const activeConfig = activeProvider ? aiConfigs[activeProvider] : null;
+  const activeProviderInfo = activeProvider ? AI_PROVIDERS[activeProvider] : null;
 
   const handleProviderSwitch = (provider: string) => {
     setActiveProvider(provider);
@@ -83,12 +83,12 @@ export function AIConfigPanel() {
             </div>
           </div>
 
-          {activeProviderInfo && (
+          {activeProviderInfo && activeConfig && activeProvider && (
             <>
               {/* Model selection */}
               <div>
                 <Label htmlFor="model">Model</Label>
-                <Select value={activeConfig.model} onValueChange={(model) => handleModelChange(activeProvider, model)}>
+                <Select value={activeConfig.model || ''} onValueChange={(model) => handleModelChange(activeProvider, model)}>
                   <SelectTrigger id="model">
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
@@ -112,7 +112,7 @@ export function AIConfigPanel() {
                   <Input
                     id="api-key"
                     type={showApiKey[activeProvider] ? 'text' : 'password'}
-                    value={activeConfig.apiKey}
+                    value={activeConfig?.apiKey || ''}
                     onChange={(e) => handleApiKeyChange(activeProvider, e.target.value)}
                     placeholder={`Enter your ${activeProviderInfo.name} API key`}
                     className="pr-10"
@@ -136,7 +136,7 @@ export function AIConfigPanel() {
               </div>
 
               {/* Cost warning */}
-              {activeConfig.apiKey && (
+              {activeConfig?.apiKey && (
                 <div className="flex gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                   <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
                   <div className="text-sm">

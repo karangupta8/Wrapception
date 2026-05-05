@@ -5,6 +5,7 @@ import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 import { Dashboard } from '@/components/app/Dashboard';
 import { SessionHeader } from '@/components/app/SessionHeader';
 import { DemoMode } from '@/components/app/DemoMode';
+import { ErrorBoundary } from '@/components/app/ErrorBoundary';
 import { SessionProvider } from '@/context/SessionContext';
 
 const Index = () => {
@@ -24,12 +25,14 @@ const Index = () => {
             <SupportedPlatforms />
 
             {/* App Section */}
-            <section id="create" className="py-20 border-t border-border/50">
-              <div className="container mx-auto px-6">
-                <SessionHeader />
-                <Dashboard />
-              </div>
-            </section>
+            <ErrorBoundary>
+              <section id="create" className="py-20 border-t border-border/50">
+                <div className="container mx-auto px-6">
+                  <SessionHeader />
+                  <Dashboard />
+                </div>
+              </section>
+            </ErrorBoundary>
 
             {/* Footer */}
             <footer className="py-12 border-t border-border/50">
