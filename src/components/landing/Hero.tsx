@@ -1,7 +1,11 @@
 import { ArrowDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function Hero() {
+interface HeroProps {
+  onTryDemo?: () => void;
+}
+
+export function Hero({ onTryDemo }: HeroProps) {
   const scrollToCreate = () => {
     document.getElementById('create')?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -52,18 +56,29 @@ export function Hero() {
           </p>
 
           {/* CTAs */}
-          <div 
+          <div
             className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 animate-fade-up"
             style={{ animationDelay: '0.4s' }}
           >
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               className="group px-8 py-6 text-lg rounded-full gradient-hero border-0 shadow-elevated hover:shadow-soft transition-all duration-300"
               onClick={scrollToCreate}
             >
               Create My Wrapception
               <ArrowDown className="ml-2 w-5 h-5 group-hover:translate-y-1 transition-transform" />
             </Button>
+            {onTryDemo && (
+              <Button
+                size="lg"
+                variant="outline"
+                className="px-8 py-6 text-lg rounded-full"
+                onClick={onTryDemo}
+              >
+                <Sparkles className="mr-2 w-5 h-5" />
+                Try Demo
+              </Button>
+            )}
           </div>
 
           {/* Privacy note */}

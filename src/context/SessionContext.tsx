@@ -74,6 +74,7 @@ interface SessionContextType {
   generateInsights: () => Promise<void>;
   resetSession: () => void;
   exportSession: () => string;
+  loadDemoData: (sources: UploadedSource[], analyticsData: AnalyticsData) => void;
   insightsError: string | null;
   insightsErrorCode: ErrorCode | null;
 }
@@ -310,6 +311,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return JSON.stringify(exportData, null, 2);
   }, [session]);
 
+  const loadDemoData = useCallback((sources: UploadedSource[], analyticsData: AnalyticsData) => {
+    setSession(prev => ({
+      ...prev,
+      uploadedSources: sources,
+      analyticsData,
+      narrativeSummary: analyticsData.yearSummary,
+    }));
+  }, []);
+
   return (
     <SessionContext.Provider value={{
       session,
@@ -325,6 +335,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       generateInsights,
       resetSession,
       exportSession,
+      loadDemoData,
       insightsError,
       insightsErrorCode,
     }}>
