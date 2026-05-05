@@ -91,31 +91,33 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
       {/* Progress indicator */}
-      <div className="flex items-center justify-center gap-2 mb-8">
+      <div className="flex items-center justify-center gap-1 md:gap-2 mb-6 md:mb-8 overflow-x-auto pb-2">
         {steps.map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <div 
+          <div key={s} className="flex items-center gap-2 flex-shrink-0">
+            <div
+              aria-label={`Step ${i + 1}: ${s}${i < currentStepIndex ? ' (completed)' : i === currentStepIndex ? ' (current)' : ''}`}
+              aria-current={i === currentStepIndex ? 'step' : undefined}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                i < currentStepIndex 
-                  ? 'bg-primary text-primary-foreground' 
-                  : i === currentStepIndex 
-                    ? 'bg-accent text-accent-foreground' 
+                i < currentStepIndex
+                  ? 'bg-primary text-primary-foreground'
+                  : i === currentStepIndex
+                    ? 'bg-accent text-accent-foreground'
                     : 'bg-muted text-muted-foreground'
               }`}
             >
               {i < currentStepIndex ? <Check className="w-4 h-4" /> : i + 1}
             </div>
             {i < steps.length - 1 && (
-              <div className={`w-12 h-0.5 ${i < currentStepIndex ? 'bg-primary' : 'bg-muted'}`} />
+              <div className={`w-8 md:w-12 h-0.5 ${i < currentStepIndex ? 'bg-primary' : 'bg-muted'}`} />
             )}
           </div>
         ))}
       </div>
 
       {/* Step content */}
-      <div className="bg-card rounded-2xl shadow-card p-8 min-h-[400px]">
+      <div className="bg-card rounded-2xl shadow-card p-4 md:p-8 min-h-[400px]">
         {step === 'category' && (
           <div className="space-y-6">
             <div className="text-center mb-8">
@@ -129,9 +131,11 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
                   <button
                     key={cat}
                     onClick={() => setCategory(cat)}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      category === cat 
-                        ? 'border-primary bg-primary/5' 
+                    aria-label={`Select ${info.label} category`}
+                    aria-pressed={category === cat}
+                    className={`p-4 rounded-xl border-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary ${
+                      category === cat
+                        ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/30'
                     }`}
                   >
@@ -180,10 +184,12 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
               <p className="text-muted-foreground">Add your Wrapped screenshot, PDF, or paste text</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
               <button
                 onClick={() => setInputType('image')}
-                className={`p-4 rounded-xl border-2 text-center transition-all ${
+                aria-label="Upload as image"
+                aria-pressed={inputType === 'image'}
+                className={`p-4 rounded-xl border-2 text-center transition-all focus:outline-none focus:ring-2 focus:ring-primary ${
                   inputType === 'image' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
                 }`}
               >
@@ -192,7 +198,9 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
               </button>
               <button
                 onClick={() => setInputType('pdf')}
-                className={`p-4 rounded-xl border-2 text-center transition-all ${
+                aria-label="Upload as PDF"
+                aria-pressed={inputType === 'pdf'}
+                className={`p-4 rounded-xl border-2 text-center transition-all focus:outline-none focus:ring-2 focus:ring-primary ${
                   inputType === 'pdf' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
                 }`}
               >
@@ -201,7 +209,9 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
               </button>
               <button
                 onClick={() => setInputType('text')}
-                className={`p-4 rounded-xl border-2 text-center transition-all ${
+                aria-label="Enter text content"
+                aria-pressed={inputType === 'text'}
+                className={`p-4 rounded-xl border-2 text-center transition-all focus:outline-none focus:ring-2 focus:ring-primary ${
                   inputType === 'text' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
                 }`}
               >
@@ -290,12 +300,23 @@ export function UploadWizard({ onComplete, onCancel }: UploadWizardProps) {
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between mt-6">
-        <Button variant="ghost" onClick={goBack}>
+      <div className="flex justify-between gap-3 mt-6">
+        <Button
+          variant="ghost"
+          onClick={goBack}
+          aria-label={currentStepIndex === 0 ? 'Cancel upload' : `Back to ${steps[currentStepIndex - 1] || 'previous'} step`}
+          className="flex-1 md:flex-none"
+        >
           <ChevronLeft className="w-4 h-4 mr-2" />
-          {currentStepIndex === 0 ? 'Cancel' : 'Back'}
+          <span className="hidden sm:inline">{currentStepIndex === 0 ? 'Cancel' : 'Back'}</span>
+          <span className="sm:hidden">{currentStepIndex === 0 ? 'Cancel' : '←'}</span>
         </Button>
-        <Button onClick={goNext} disabled={!canProceed()}>
+        <Button
+          onClick={goNext}
+          disabled={!canProceed()}
+          aria-label={step === 'preview' ? 'Save and upload content' : 'Continue to next step'}
+          className="flex-1 md:flex-none"
+        >
           {step === 'preview' ? 'Save Upload' : 'Continue'}
           {step !== 'preview' && <ChevronRight className="w-4 h-4 ml-2" />}
         </Button>
