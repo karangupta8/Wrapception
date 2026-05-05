@@ -46,7 +46,7 @@ export function Hero({ onTryDemo }: HeroProps) {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 animate-fade-up">
             <Sparkles className="w-4 h-4 text-accent" />
             <span className="text-sm font-medium text-muted-foreground">
-              A Wrapped™ for your Wraps™
+              Funny how every company putting out wraps
             </span>
           </div>
 
@@ -63,8 +63,8 @@ export function Hero({ onTryDemo }: HeroProps) {
             className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto leading-relaxed animate-fade-up"
             style={{ animationDelay: '0.2s' }}
           >
-            LinkedIn made a Wrapped.{' '}
-            <span className="text-foreground font-medium">Someone had to respond.</span>
+            Who even asked for LinkedIn, PayTm, ChatGPT wraps?{' '}
+            <span className="text-foreground font-medium">So we built this for all of them.</span>
           </p>
 
           {/* Scrolling ticker */}
@@ -95,8 +95,10 @@ export function Hero({ onTryDemo }: HeroProps) {
             className="text-base md:text-lg text-muted-foreground/80 max-w-xl mx-auto animate-fade-up"
             style={{ animationDelay: '0.3s' }}
           >
-            Upload every unsolicited year-in-review you received. Let AI figure out
-            what they collectively say about you as a person.
+            An allegory on wrapped culture. (You can take it as an allegory on vibe coding too—anyone is building anything nowadays.)
+            <span className="block mt-3 text-muted-foreground/70">
+              Upload every wrap. Extract the real data. One narrative. Your actual year.
+            </span>
           </p>
 
           {/* CTAs */}
@@ -130,7 +132,8 @@ export function Hero({ onTryDemo }: HeroProps) {
             className="text-sm text-muted-foreground/50 animate-fade-up"
             style={{ animationDelay: '0.5s' }}
           >
-            🔒 Stays in your browser. Unlike your Spotify listening history, which is on their servers forever.
+            🔒 Built honest. Everything stays in your browser—no data collection, no tracking, no backend.
+            <span className="block mt-1">Just vibe-coded and shipped.</span>
           </p>
         </div>
 

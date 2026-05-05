@@ -13,21 +13,19 @@ export function DemoMode({ onExit }: DemoModeProps) {
   const { session, loadDemoData, setYear } = useSession();
 
   useEffect(() => {
-    // Only load demo data once on mount
-    if (session.uploadedSources.length === 0) {
-      // Set year to 2025
-      setYear(2025);
+    // Load demo data on mount
+    // Set year to 2025
+    setYear(2025);
 
-      // Prepare sources with processed status
-      const processedSources = SAMPLE_SOURCES.map((source) => ({
-        ...source,
-        status: 'processed' as const,
-      }));
+    // Prepare sources with processed status
+    const processedSources = SAMPLE_SOURCES.map((source) => ({
+      ...source,
+      status: 'processed' as const,
+    }));
 
-      // Load demo data into session
-      loadDemoData(processedSources, SAMPLE_ANALYTICS_DATA);
-    }
-  }, [session.uploadedSources.length, setYear, loadDemoData]);
+    // Load demo data into session
+    loadDemoData(processedSources, SAMPLE_ANALYTICS_DATA);
+  }, [setYear, loadDemoData]);
 
   return (
     <div className="relative">
@@ -37,9 +35,9 @@ export function DemoMode({ onExit }: DemoModeProps) {
           <div className="flex items-center gap-3">
             <Sparkles className="w-5 h-5 text-amber-600" />
             <div>
-              <p className="font-medium text-amber-900">Demo Mode</p>
+              <p className="font-medium text-amber-900">Demo Mode — No API Key Required</p>
               <p className="text-sm text-amber-700">
-                Explore Wrapception with sample data. No API key needed.
+                See how Wrapception unwraps your wraps. All wraps, one year.
               </p>
             </div>
           </div>

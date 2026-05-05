@@ -56,7 +56,7 @@ const AnalyticsDataSchema = z.object({
   ),
   categoryBreakdown: z.array(
     z.object({
-      category: z.string(),
+      category: z.enum(['music', 'fitness', 'reading', 'movies', 'work', 'productivity', 'other']),
       count: z.number(),
       topPlatform: z.string().optional(),
       keyMetric: z.string().optional(),

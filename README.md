@@ -13,17 +13,30 @@
 - [Deployment](#deployment)
 - [Contributing](#contributing)
 
-## Problem
-Every year, dozens of apps generate beautiful but siloed “Year in Review” summaries. These insights are fragmented across platforms, locked inside screenshots, stories, and PDFs, making it impossible to compare, correlate, or reflect on holistically.
+## The Idea
 
-> You don’t live your life in apps. Your data does.
+Every company these days is shipping a “Wrapped.” Spotify started it. Then came Apple Music Replay. YouTube Recap. GitHub wrapped-up contributions. Even LinkedIn got in on it. ChatGPT. Duolingo. PayTm. Goodreads. The list keeps growing—who even asked for half of these?
+
+It’s become a cultural phenomenon. **Wrapception** is an allegory on that wrapped culture.
+
+But it’s also an allegory on *vibe coding* culture itself—anyone is building anything, nowadays, and somehow it works.
+
+## Problem
+
+Your life isn’t lived in a single app. Neither is your “year in review” data. Yet every platform insists on its own wrapped version, siloed and isolated. These insights are fragmented across screenshots, PDFs, and stories, making it impossible to see the bigger picture—your actual year, reflected across everything that mattered to you.
+
+> You don’t live your life in one app. Your data lives in a dozen.
 
 ## Solution
-**Wrapception** is a web app that lets users upload Year‑End summaries (images, PDFs, text) from all their services and uses AI to generate a single, intelligent, cross‑domain annual view of their life.
 
-- One unified dashboard
-- One coherent narrative
-- One memory they actually own
+**Wrapception** takes all those scattered wraps and unwraps them into something real—a unified, cross-platform view of your actual year.
+
+Upload your Spotify Wrapped, Strava Year in Sport, GitHub contributions, Goodreads stats, LinkedIn summary, or any other platform's wrap. Wrapception extracts the real data, correlates insights across platforms, and gives you a single coherent narrative of your year—not through the lens of any single app, but through the reality of how you actually spent your time.
+
+- **One unified dashboard** instead of ten separate screenshots
+- **One coherent narrative** instead of fragmented metrics
+- **One memory you actually own** instead of data locked in corporate platforms
+- **Zero server involvement** — everything happens in your browser
 
 ---
 
@@ -88,6 +101,16 @@ Every year, dozens of apps generate beautiful but siloed “Year in Review” su
 - **Demo Mode**: Explore with pre-loaded sample data
 - No API key required for demo
 - Full app experience to understand features
+
+---
+
+## The Allegory
+
+**On Wrapped Culture:**  
+Every company now ships a "wrapped." It's become a meme, a rite of passage, a flex. The irony? Your actual life isn't captured in any single wrap. They're all true, and none of them tell the full story. Wrapception exists because that gap felt worth exploring.
+
+**On Vibe Coding Culture:**  
+This app is built with vibes. No grand architecture planning, no enterprise patterns, just solving the real problem with the tools at hand. Anyone can build anything nowadays—whether they should is a different question. But sometimes the best ideas come from people who just... build.
 
 ---
 
@@ -162,6 +185,7 @@ npm run build
 For detailed architecture, component documentation, and service explanations, see [CLAUDE.md](CLAUDE.md).
 
 ### Key Documentation
+- **[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)** - The ideas behind Wrapception (wrapped culture allegory, vibe coding)
 - **[CLAUDE.md](CLAUDE.md)** - Architecture, components, services, state management
 - **[docs/ERRORS.md](docs/ERRORS.md)** - Error handling system and error codes
 - **[docs/TEMPLATES.md](docs/TEMPLATES.md)** - Platform templates, adding new platforms

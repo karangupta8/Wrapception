@@ -178,7 +178,8 @@ export function InsightsDashboard() {
                     </h3>
                     <div className="grid md:grid-cols-2 gap-4">
                         {analyticsData.categoryBreakdown.map((cat) => {
-                            const info = CATEGORY_INFO[cat.category];
+                            const info = CATEGORY_INFO[cat.category as keyof typeof CATEGORY_INFO];
+                            if (!info) return null;
                             return (
                                 <div
                                     key={cat.category}

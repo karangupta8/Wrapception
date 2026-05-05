@@ -1,5 +1,13 @@
 # Platform Templates Guide
 
+## The Core Idea
+
+Every platform's "wrap" is different. Spotify shows streams and artists. Strava shows distance and pace. GitHub shows commits. Goodreads shows books. They all claim to summarize your year, but they're all extracting different signals from different data sources.
+
+**That's the point.** Each wrap tells a true story about a different part of your life. Templates exist because these stories are incomparable—Spotify's metrics don't make sense as Strava metrics.
+
+Wrapception's template system acknowledges this: Each platform needs its own extraction logic. Not because we're being fancy—because we're being honest about what the data actually means.
+
 ## Overview
 
 Wrapception uses platform-specific prompt templates to extract the right metrics from any "wrap" data. Templates are patterns and instructions that tell the AI what to look for and how to structure the output.

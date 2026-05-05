@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSession } from '@/context/SessionContext';
 import { AI_PROVIDERS, DEFAULT_AI_CONFIGS } from '@/types/session';
+import { saveApiKey } from '@/services/secureStore';
 
 export function AIConfigPanel() {
   const { session, updateAIConfig, setActiveProvider, saveSession } = useSession();
@@ -30,7 +31,11 @@ export function AIConfigPanel() {
     updateAIConfig(provider, { model });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Save API key to secure storage (sessionStorage by default, localStorage with encryption if needed)
+    if (activeConfig?.apiKey) {
+      await saveApiKey(activeConfig.apiKey);
+    }
     saveSession();
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);

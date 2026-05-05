@@ -179,6 +179,8 @@ export function Dashboard() {
                           key={source.id}
                           source={source}
                           onRetry={() => handleGenerateInsights()}
+                          detectedPlatform={source.platformName}
+                          confidence={0.8}
                         />
                       );
                     })}

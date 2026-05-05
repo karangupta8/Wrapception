@@ -19,7 +19,7 @@ const features = [
   {
     icon: Lock,
     title: 'Your Data, Your Browser',
-    description: 'Everything runs client-side. Your AI key is encrypted. Nothing hits our servers — because frankly, we don\'t have any.',
+    description: 'Everything runs client-side. Your AI key is encrypted. Nothing hits our servers — because we don\'t need them. Built honest, shipped honest.',
   },
 ];
 

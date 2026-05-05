@@ -1,5 +1,19 @@
 # AI Extraction Service Guide
 
+## A Vibe-Coded Approach
+
+The extraction service is a good example of vibe coding: We didn't design a perfect distributed system. We solved the immediate problems we faced and shipped it.
+
+Problems we had:
+- One bad source would break the entire AI call
+- No way to know which source failed or how much it cost
+- No real-time feedback to users about what was happening
+- Risk of hitting token limits with large batches
+
+Solution: **Extract each source independently.** It's not a microservices architecture or a distributed system. It's just... straightforward. One source at a time. If one fails, move to the next. Show the user what's happening. Costs are predictable. Done.
+
+That's vibe coding: Solve the problem directly with tools at hand, not the problem you theoretically might have later.
+
 ## Overview
 
 The extraction service (`src/services/aiService.ts`) handles all communication with AI providers. It's built around a **per-source pipeline** where each upload is extracted independently, allowing for failure isolation, progress tracking, and cost control.

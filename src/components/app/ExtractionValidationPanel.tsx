@@ -10,7 +10,7 @@ interface ExtractionValidationPanelProps {
   detectedPlatform?: string;
   confidence?: number;
   metrics?: ExtractedMetricAI[];
-  onRetry?: () => void;
+  onRetry?: (sourceId: string) => void;
   onPlatformOverride?: (platform: string) => void;
   onMetricsEdit?: (metrics: ExtractedMetricAI[]) => void;
 }
@@ -204,7 +204,7 @@ export function ExtractionValidationPanel({
           {source.status === 'failed' && onRetry && (
             <Button
               size="sm"
-              onClick={onRetry}
+              onClick={() => onRetry(source.id)}
               className="w-full"
               variant="outline"
             >

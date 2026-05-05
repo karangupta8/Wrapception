@@ -2,7 +2,11 @@
 
 ## Overview
 
-Wrapception uses a typed error system that maps specific error codes to user-friendly messages and recovery actions. This guide explains how to understand, debug, and extend error handling.
+Errors happen. AI hallucinations happen. PDFs that refuse to parse, networks that time out, API keys that expire. The difference between a vibe-coded tool and a real one is **how you handle when things break**.
+
+Wrapception uses a typed error system that maps specific error codes to user-friendly messages and recovery actions. Every error should tell you *what* went wrong and *how to fix it*. This guide explains the system and how to extend it.
+
+**Core philosophy**: Errors are not failures to hide—they're information to act on. Show them clearly. Make recovery explicit.
 
 ## Error System Architecture
 

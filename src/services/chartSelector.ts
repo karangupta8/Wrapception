@@ -1,4 +1,4 @@
-import { AnalyticsData, CategoryStats } from '@/types/session';
+import { AnalyticsData } from '@/types/session';
 
 export interface ChartConfig {
   id: string;
@@ -12,11 +12,10 @@ export function selectCharts(data: AnalyticsData): ChartConfig[] {
   const charts: ChartConfig[] = [];
 
   // 1. Category distribution pie chart
-  if (data.categoryStats && data.categoryStats.length > 0) {
-    const pieData = data.categoryStats.map(stat => ({
-      name: stat.label,
+  if (data.categoryBreakdown && data.categoryBreakdown.length > 0) {
+    const pieData = data.categoryBreakdown.map(stat => ({
+      name: stat.category,
       value: stat.count,
-      percentage: stat.percentage,
     }));
 
     // Only show pie if we have 2-8 categories
@@ -42,42 +41,25 @@ export function selectCharts(data: AnalyticsData): ChartConfig[] {
     }
   }
 
-  // 2. Trends as line charts
+  // 2. Trends as trend cards
   if (data.trends && data.trends.length > 0) {
     data.trends.forEach((trend, idx) => {
-      if (trend.dataPoints && trend.dataPoints.length > 2) {
-        charts.push({
-          id: `trend-line-${idx}`,
-          type: 'line',
-          title: trend.title,
-          description: trend.description,
-          data: {
-            metric: trend.metric,
-            dataPoints: trend.dataPoints,
-          },
-        });
-      }
+      charts.push({
+        id: `trend-${idx}`,
+        type: 'trend',
+        title: trend.label,
+        description: trend.value,
+        data: {
+          title: trend.label,
+          description: trend.value,
+          direction: trend.direction,
+          category: trend.category,
+        },
+      });
     });
   }
 
-  // 3. Radar chart for multi-dimensional comparison
-  if (data.categoryStats && data.categoryStats.length >= 3 && data.categoryStats.length <= 8) {
-    const hasMultipleDimensions = data.categoryStats.some(stat => stat.unit !== undefined);
-    if (hasMultipleDimensions) {
-      charts.push({
-        id: 'category-radar',
-        type: 'radar',
-        title: 'Category Comparison',
-        description: 'Multi-dimensional view across categories',
-        data: data.categoryStats.map(stat => ({
-          category: stat.label,
-          value: stat.count,
-        })),
-      });
-    }
-  }
-
-  // 4. Highlight cards (shown as trend cards in UI)
+  // 3. Highlight cards (shown as trend cards in UI)
   if (data.highlights && data.highlights.length > 0) {
     data.highlights.forEach((highlight, idx) => {
       charts.push({
