@@ -39,12 +39,19 @@ export interface AIInsight {
 }
 
 export interface AIConfig {
-  enabled: boolean;
   provider: string;
   endpoint: string;
   model: string;
   apiKey: string;
   headers: Record<string, string>;
+  visionSupported: boolean;
+}
+
+export interface AIProvider {
+  id: string;
+  name: string;
+  models: Array<{ id: string; name: string }>;
+  defaultModel: string;
   visionSupported: boolean;
 }
 
@@ -60,7 +67,8 @@ export interface SessionState {
   extractedMetrics: ExtractedMetric[];
   aiInsights: AIInsight[];
   narrativeSummary: string;
-  aiConfig: AIConfig;
+  aiConfigs: Record<string, AIConfig>; // Multiple provider configs
+  activeProvider: string; // Which provider is currently active
   analyticsData: AnalyticsData | null;
   isGeneratingInsights: boolean;
 }
@@ -85,6 +93,44 @@ export const PLATFORM_SUGGESTIONS: Record<Category, string[]> = {
   other: ['Custom'],
 };
 
+// Vision-capable AI providers with latest models (May 2026)
+export const AI_PROVIDERS: Record<string, AIProvider> = {
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    models: [
+      { id: 'gpt-4o', name: 'GPT-4o (Latest, Most Capable)' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast & Cheap)' },
+    ],
+    defaultModel: 'gpt-4o-mini',
+    visionSupported: true,
+  },
+  anthropic: {
+    id: 'anthropic',
+    name: 'Anthropic (Claude)',
+    models: [
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Latest)' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Fast & Cheap)' },
+      { id: 'claude-3-opus-20250219', name: 'Claude 3 Opus (Most Capable)' },
+    ],
+    defaultModel: 'claude-3-5-haiku-20241022',
+    visionSupported: true,
+  },
+  gemini: {
+    id: 'gemini',
+    name: 'Google Gemini',
+    models: [
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Latest)' },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    ],
+    defaultModel: 'gemini-2.0-flash',
+    visionSupported: true,
+  },
+};
+
+// Provider-specific configs for API calls
 export const DEFAULT_AI_CONFIGS: Record<string, Partial<AIConfig>> = {
   openai: {
     provider: 'openai',
@@ -95,31 +141,13 @@ export const DEFAULT_AI_CONFIGS: Record<string, Partial<AIConfig>> = {
   anthropic: {
     provider: 'anthropic',
     endpoint: 'https://api.anthropic.com/v1/messages',
-    model: 'claude-3-haiku-20240307',
+    model: 'claude-3-5-haiku-20241022',
     visionSupported: true,
   },
   gemini: {
     provider: 'gemini',
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
     model: 'gemini-2.0-flash',
     visionSupported: true,
-  },
-  grok: {
-    provider: 'grok',
-    endpoint: 'https://api.x.ai/v1/chat/completions',
-    model: 'grok-beta',
-    visionSupported: true,
-  },
-  groq: {
-    provider: 'groq',
-    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-70b-versatile',
-    visionSupported: false,
-  },
-  custom: {
-    provider: 'custom',
-    endpoint: '',
-    model: '',
-    visionSupported: false,
   },
 };

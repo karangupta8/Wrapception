@@ -7,21 +7,40 @@ import {
   AIInsight,
   AIConfig,
   AnalyticsData,
+  DEFAULT_AI_CONFIGS,
 } from '@/types/session';
 import { extractSource, synthesizeAnalytics, type SourceExtraction } from '@/services/aiService';
 import { WrapceptionError, toWrapceptionError, type ErrorCode } from '@/services/errors';
 
 const STORAGE_KEY = 'wrapception_session';
 
-const DEFAULT_AI_CONFIG: AIConfig = {
-  enabled: false,
-  provider: 'openai',
-  endpoint: 'https://api.openai.com/v1/chat/completions',
-  model: 'gpt-4o-mini',
-  apiKey: '',
-  headers: {},
-  visionSupported: true,
-};
+// Initialize all provider configs with empty API keys
+const getDefaultAIConfigs = (): Record<string, AIConfig> => ({
+  openai: {
+    provider: 'openai',
+    endpoint: DEFAULT_AI_CONFIGS.openai.endpoint!,
+    model: DEFAULT_AI_CONFIGS.openai.model!,
+    apiKey: '',
+    headers: {},
+    visionSupported: true,
+  },
+  anthropic: {
+    provider: 'anthropic',
+    endpoint: DEFAULT_AI_CONFIGS.anthropic.endpoint!,
+    model: DEFAULT_AI_CONFIGS.anthropic.model!,
+    apiKey: '',
+    headers: {},
+    visionSupported: true,
+  },
+  gemini: {
+    provider: 'gemini',
+    endpoint: DEFAULT_AI_CONFIGS.gemini.endpoint!,
+    model: DEFAULT_AI_CONFIGS.gemini.model!,
+    apiKey: '',
+    headers: {},
+    visionSupported: true,
+  },
+});
 
 const getInitialSession = (): SessionState => {
   try {
@@ -54,7 +73,8 @@ const getInitialSession = (): SessionState => {
     extractedMetrics: [],
     aiInsights: [],
     narrativeSummary: '',
-    aiConfig: DEFAULT_AI_CONFIG,
+    aiConfigs: getDefaultAIConfigs(),
+    activeProvider: 'openai',
     analyticsData: null,
     isGeneratingInsights: false,
   };
@@ -69,7 +89,8 @@ interface SessionContextType {
   addMetric: (metric: ExtractedMetric) => void;
   updateInsight: (id: string, content: string) => void;
   updateNarrative: (content: string) => void;
-  updateAIConfig: (config: Partial<AIConfig>) => void;
+  updateAIConfig: (provider: string, config: Partial<AIConfig>) => void;
+  setActiveProvider: (provider: string) => void;
   saveSession: () => void;
   generateInsights: () => Promise<void>;
   resetSession: () => void;
@@ -180,10 +201,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSession(prev => ({ ...prev, narrativeSummary: content }));
   }, []);
 
-  const updateAIConfig = useCallback((config: Partial<AIConfig>) => {
+  const updateAIConfig = useCallback((provider: string, config: Partial<AIConfig>) => {
     setSession(prev => ({
       ...prev,
-      aiConfig: { ...prev.aiConfig, ...config },
+      aiConfigs: {
+        ...prev.aiConfigs,
+        [provider]: { ...prev.aiConfigs[provider], ...config },
+      },
+    }));
+  }, []);
+
+  const setActiveProvider = useCallback((provider: string) => {
+    setSession(prev => ({
+      ...prev,
+      activeProvider: provider,
     }));
   }, []);
 
@@ -193,14 +224,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSession(prev => ({ ...prev, isGeneratingInsights: true }));
 
     try {
-      const { aiConfig, uploadedSources, year } = session;
+      const { aiConfigs, activeProvider, uploadedSources, year } = session;
+      const aiConfig = aiConfigs[activeProvider];
 
       // Pre-flight validation with typed errors
-      if (!aiConfig.enabled) {
-        throw new WrapceptionError('AI is not enabled.', 'AI_NOT_ENABLED');
-      }
-      if (!aiConfig.apiKey) {
-        throw new WrapceptionError('API key is missing.', 'NO_API_KEY');
+      if (!aiConfig || !aiConfig.apiKey) {
+        throw new WrapceptionError('API key is missing for ' + activeProvider + '.', 'NO_API_KEY');
       }
       if (uploadedSources.length === 0) {
         throw new WrapceptionError('No sources uploaded.', 'NO_SOURCES');
@@ -292,7 +321,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       extractedMetrics: [],
       aiInsights: [],
       narrativeSummary: '',
-      aiConfig: DEFAULT_AI_CONFIG,
+      aiConfigs: getDefaultAIConfigs(),
+      activeProvider: 'openai',
       analyticsData: null,
       isGeneratingInsights: false,
     });
@@ -331,6 +361,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateInsight,
       updateNarrative,
       updateAIConfig,
+      setActiveProvider,
       saveSession,
       generateInsights,
       resetSession,
