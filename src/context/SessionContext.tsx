@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { saveSourceContent, deleteSourceContent, loadAllSourceContent, clearAllSourceContent } from '@/services/storage';
+import { clearExpiredCache, clearAllCache } from '@/services/extractionCache';
 import {
   SessionState,
   UploadedSource,
@@ -113,21 +114,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [insightsErrorCode, setInsightsErrorCode] = useState<ErrorCode | null>(null);
 
-  // On mount: restore file content from IndexedDB for sources that lost it during last save
+  // On mount: restore file content from IndexedDB and cleanup expired cache
   useEffect(() => {
     const missing = session.uploadedSources.filter(
       (s) => s.inputType !== 'text' && s.rawContent === '[File stored in memory]'
     );
-    if (missing.length === 0) return;
+    if (missing.length > 0) {
+      loadAllSourceContent(missing.map((s) => s.id)).then((contentMap) => {
+        if (Object.keys(contentMap).length === 0) return;
+        setSession((prev) => ({
+          ...prev,
+          uploadedSources: prev.uploadedSources.map((s) =>
+            contentMap[s.id] ? { ...s, rawContent: contentMap[s.id] } : s
+          ),
+        }));
+      });
+    }
 
-    loadAllSourceContent(missing.map((s) => s.id)).then((contentMap) => {
-      if (Object.keys(contentMap).length === 0) return;
-      setSession((prev) => ({
-        ...prev,
-        uploadedSources: prev.uploadedSources.map((s) =>
-          contentMap[s.id] ? { ...s, rawContent: contentMap[s.id] } : s
-        ),
-      }));
+    // Clean up expired cache entries
+    clearExpiredCache().catch((err) => {
+      logger.warn('SessionContext', 'Failed to cleanup extraction cache', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -243,26 +251,44 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         throw new WrapceptionError('No sources uploaded.', 'NO_SOURCES');
       }
 
-      // Per-source extraction — failures are isolated
+      // Per-source extraction — parallelized for speed, failures are isolated
       const successful: SourceExtraction[] = [];
 
-      for (const source of uploadedSources) {
-        logger.info('SessionContext', `Extracting source: ${source.name}`, { sourceId: source.id });
+      // Mark all as processing
+      setSession(prev => ({
+        ...prev,
+        uploadedSources: prev.uploadedSources.map(s => ({
+          ...s,
+          status: 'processing' as const,
+          extractionError: undefined,
+        })),
+      }));
 
-        // Mark source as processing
-        setSession(prev => ({
-          ...prev,
-          uploadedSources: prev.uploadedSources.map(s =>
-            s.id === source.id ? { ...s, status: 'processing' as const, extractionError: undefined } : s
-          ),
-        }));
+      logger.info('SessionContext', `Starting parallel extraction of ${uploadedSources.length} sources`);
 
-        try {
-          const extraction = await extractSource(source, aiConfig, year);
+      // Create all extraction promises
+      const extractionPromises = uploadedSources.map(source =>
+        extractSource(source, aiConfig, year).then(extraction => ({
+          source,
+          extraction,
+          error: null,
+        })).catch(err => ({
+          source,
+          extraction: null,
+          error: toWrapceptionError(err),
+        }))
+      );
+
+      // Run all in parallel
+      const results = await Promise.all(extractionPromises);
+
+      // Process results
+      for (const { source, extraction, error } of results) {
+        if (extraction && !error) {
           successful.push(extraction);
           logger.info('SessionContext', `Source extracted successfully: ${source.name}`, {
             sourceId: source.id,
-            platform: extraction.detectedPlatform,
+            platform: extraction.platformHint.platform,
             confidence: extraction.confidence,
           });
 
@@ -272,28 +298,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               s.id === source.id ? { ...s, status: 'processed' as const } : s
             ),
           }));
-        } catch (sourceErr) {
-          const wrapped = toWrapceptionError(sourceErr);
-          logger.error('SessionContext', `Source extraction failed: ${source.name}`, wrapped, {
+        } else if (error) {
+          logger.error('SessionContext', `Source extraction failed: ${source.name}`, {
             sourceId: source.id,
-            errorCode: wrapped.code,
+            errorCode: error.code,
+            errorMessage: error.message,
           });
 
           setSession(prev => ({
             ...prev,
             uploadedSources: prev.uploadedSources.map(s =>
               s.id === source.id
-                ? { ...s, status: 'failed' as const, extractionError: wrapped.message }
+                ? { ...s, status: 'failed' as const, extractionError: error.message }
                 : s
             ),
           }));
-          // Continue with other sources unless it's an auth/key error (affects all)
+
+          // If auth error, stop all processing (affects all sources)
           if (
-            wrapped.code === 'AI_API_UNAUTHORIZED' ||
-            wrapped.code === 'NO_API_KEY' ||
-            wrapped.code === 'AI_NOT_ENABLED'
+            error.code === 'AI_API_UNAUTHORIZED' ||
+            error.code === 'NO_API_KEY' ||
+            error.code === 'AI_NOT_ENABLED'
           ) {
-            throw wrapped;
+            throw error;
           }
         }
       }
@@ -301,7 +328,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (successful.length === 0) {
         throw new WrapceptionError(
           'All sources failed to extract. Check errors on each source card.',
-          'NO_SOURCES',
+          'EXTRACTION_ALL_FAILED',
         );
       }
 
@@ -345,6 +372,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resetSession = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     clearAllSourceContent();
+    clearAllCache().catch((err) => {
+      logger.warn('SessionContext', 'Failed to clear extraction cache', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     setSession({
       year: new Date().getFullYear(),
       uploadedSources: [],

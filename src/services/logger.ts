@@ -24,7 +24,7 @@ export interface LogStats {
   newestLog: number;
 }
 
-const DB_NAME = 'wrapception';
+const DB_NAME = 'wrapception-logs';
 const STORE_NAME = 'logs';
 const MAX_LOGS = 500;
 const LOG_TTL_DAYS = 7;

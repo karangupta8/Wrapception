@@ -28,6 +28,10 @@ export interface ExtractedMetric {
   metricValue: string | number;
   unit?: string;
   confidenceScore?: number;
+  // NEW: Explainability fields
+  evidence?: string;
+  confidence?: number;
+  alternativeValues?: string[];
 }
 
 export interface AIInsight {

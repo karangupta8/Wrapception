@@ -1,9 +1,71 @@
+import { z } from 'zod';
 import { AIConfig, UploadedSource, Category, CATEGORY_INFO } from '@/types/session';
 import { WrapceptionError, fromHttpStatus, toWrapceptionError } from './errors';
 import { detectFromFilename, detectFromContent, type PlatformHint } from './platformDetector';
 import { selectTemplate, buildTemplatePrompt } from './promptTemplates';
 import { compressImage, extractTextFromPDF, pdfFirstPageToImage } from './contentExtractor';
 import { logger } from './logger';
+import { getCachedExtraction, cacheExtraction, hashContent, clearExpiredCache } from './extractionCache';
+
+// ─── Validation schemas & metrics ────────────────────────────────────────────
+
+interface CallMetrics {
+  promptTokens: number;
+  completionTokens: number;
+  model: string;
+  provider: string;
+  latencyMs: number;
+  timestamp: number;
+}
+
+interface RetryConfig {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+const ExtractedMetricAISchema = z.object({
+  name: z.string(),
+  value: z.union([z.string(), z.number()]),
+  unit: z.string().optional(),
+  category: z.string().optional(),
+  platform: z.string().optional(),
+});
+
+const AnalyticsDataSchema = z.object({
+  yearSummary: z.string(),
+  highlights: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string(),
+      category: z.string().optional(),
+      metric: z.string().optional(),
+      icon: z.string().optional(),
+    })
+  ),
+  metrics: z.array(ExtractedMetricAISchema),
+  trends: z.array(
+    z.object({
+      label: z.string(),
+      direction: z.enum(['up', 'down', 'stable']),
+      value: z.string(),
+      percentChange: z.number().optional(),
+      category: z.string().optional(),
+    })
+  ),
+  categoryBreakdown: z.array(
+    z.object({
+      category: z.string(),
+      count: z.number(),
+      topPlatform: z.string().optional(),
+      keyMetric: z.string().optional(),
+      insight: z.string(),
+    })
+  ),
+  recommendations: z.array(z.string()),
+  generatedAt: z.date().optional(),
+});
 
 // ─── Public response types ───────────────────────────────────────────────────
 
@@ -58,6 +120,11 @@ export interface SourceExtraction {
   analyticsData: AnalyticsData;
   confidence: number; // 0–1
   warnings: string[];
+  cost?: {
+    promptTokens: number;
+    completionTokens: number;
+    estimatedUsd: number;
+  };
 }
 
 // ─── Internal content types ───────────────────────────────────────────────────
@@ -69,6 +136,47 @@ type OpenAIContentItem = OpenAITextItem | OpenAIImageItem;
 type AnthropicTextItem = { type: 'text'; text: string };
 type AnthropicImageItem = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
 type AnthropicContentItem = AnthropicTextItem | AnthropicImageItem;
+
+// ─── Retry logic ──────────────────────────────────────────────────────────────
+
+/** Retry a function with exponential backoff for transient errors. */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  sourceId?: string,
+  config: RetryConfig = { maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 5000 },
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err as Error;
+
+      const isRetryable =
+        err instanceof Error &&
+        (err.message.includes('timeout') ||
+          err.message.includes('429') ||
+          err.message.includes('5') ||
+          err.message.includes('ECONNREFUSED') ||
+          err.message.includes('Failed to fetch'));
+
+      if (!isRetryable || attempt === config.maxAttempts) {
+        throw err;
+      }
+
+      const delay = Math.min(config.baseDelayMs * Math.pow(2, attempt - 1), config.maxDelayMs);
+      logger.debug('aiService', `Retry attempt ${attempt}/${config.maxAttempts} after ${delay}ms`, {
+        sourceId,
+        error: lastError.message,
+      });
+
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  throw lastError || new Error('Retry failed');
+}
 
 // ─── Content preparation ──────────────────────────────────────────────────────
 
@@ -139,7 +247,8 @@ async function callGemini(
   imageDataUrl: string | null,
   platformName: string,
   year: number,
-): Promise<string> {
+): Promise<{ content: string; metrics: CallMetrics }> {
+  const startTime = Date.now();
   const parts: object[] = [];
   let textBuffer = `${systemPrompt}\n\nAnalyze my ${year} ${platformName} wrap:\n\n`;
 
@@ -176,7 +285,22 @@ async function callGemini(
   }
 
   const data = await response.json();
-  return data.candidates[0].content.parts[0].text;
+  const latencyMs = Date.now() - startTime;
+  const usageData = data.usageMetadata || {};
+
+  const metrics: CallMetrics = {
+    promptTokens: usageData.promptTokenCount || 0,
+    completionTokens: usageData.candidatesTokenCount || 0,
+    model: config.model,
+    provider: 'gemini',
+    latencyMs,
+    timestamp: Date.now(),
+  };
+
+  return {
+    content: data.candidates[0].content.parts[0].text,
+    metrics,
+  };
 }
 
 async function callOpenAI(
@@ -186,7 +310,8 @@ async function callOpenAI(
   imageDataUrl: string | null,
   platformName: string,
   year: number,
-): Promise<string> {
+): Promise<{ content: string; metrics: CallMetrics }> {
+  const startTime = Date.now();
   const userContent: string | OpenAIContentItem[] =
     config.visionSupported && imageDataUrl
       ? [
@@ -225,7 +350,21 @@ async function callOpenAI(
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  const latencyMs = Date.now() - startTime;
+
+  const metrics: CallMetrics = {
+    promptTokens: data.usage?.prompt_tokens || 0,
+    completionTokens: data.usage?.completion_tokens || 0,
+    model: config.model,
+    provider: config.provider,
+    latencyMs,
+    timestamp: Date.now(),
+  };
+
+  return {
+    content: data.choices[0].message.content,
+    metrics,
+  };
 }
 
 async function callAnthropic(
@@ -235,7 +374,8 @@ async function callAnthropic(
   imageDataUrl: string | null,
   platformName: string,
   year: number,
-): Promise<string> {
+): Promise<{ content: string; metrics: CallMetrics }> {
+  const startTime = Date.now();
   const userContent: string | AnthropicContentItem[] =
     config.visionSupported && imageDataUrl
       ? (() => {
@@ -273,7 +413,21 @@ async function callAnthropic(
   }
 
   const data = await response.json();
-  return data.content[0].text;
+  const latencyMs = Date.now() - startTime;
+
+  const metrics: CallMetrics = {
+    promptTokens: data.usage?.input_tokens || 0,
+    completionTokens: data.usage?.output_tokens || 0,
+    model: config.model,
+    provider: 'anthropic',
+    latencyMs,
+    timestamp: Date.now(),
+  };
+
+  return {
+    content: data.content[0].text,
+    metrics,
+  };
 }
 
 // ─── Response parsing ─────────────────────────────────────────────────────────
@@ -310,6 +464,30 @@ function parseAnalyticsResponse(rawResponse: string): AnalyticsData {
 
 // ─── Per-source extraction ────────────────────────────────────────────────────
 
+/** Estimate cost from token usage. */
+function estimateTokenCost(metrics: CallMetrics): number {
+  const priceTables: Record<string, Record<string, [number, number]>> = {
+    openai: {
+      'gpt-4o': [0.005, 0.015],
+      'gpt-4-turbo': [0.01, 0.03],
+      'gpt-4o-mini': [0.00015, 0.0006],
+    },
+    anthropic: {
+      'claude-3-5-sonnet-20241022': [0.003, 0.015],
+      'claude-3-5-haiku-20241022': [0.00080, 0.0024],
+      'claude-3-opus-20250219': [0.015, 0.075],
+    },
+    gemini: {
+      'gemini-2.0-flash': [0.000075, 0.0003],
+      'gemini-1.5-flash': [0.000075, 0.0003],
+      'gemini-1.5-pro': [0.00125, 0.005],
+    },
+  };
+
+  const [inputPrice, outputPrice] = priceTables[metrics.provider]?.[metrics.model] || [0, 0];
+  return (metrics.promptTokens * inputPrice + metrics.completionTokens * outputPrice) / 1000;
+}
+
 async function callProvider(
   config: AIConfig,
   systemPrompt: string,
@@ -317,20 +495,67 @@ async function callProvider(
   imageDataUrl: string | null,
   platformName: string,
   year: number,
-): Promise<string> {
+): Promise<{ content: string; metrics: CallMetrics; estimatedUsd: number }> {
+  let result: { content: string; metrics: CallMetrics };
+
   switch (config.provider) {
     case 'gemini':
-      return callGemini(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      result = await callGemini(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      break;
     case 'anthropic':
-      return callAnthropic(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      result = await callAnthropic(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      break;
     case 'openai':
     case 'groq':
     case 'grok':
     case 'custom':
-      return callOpenAI(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      result = await callOpenAI(config, systemPrompt, textContent, imageDataUrl, platformName, year);
+      break;
     default:
       throw new WrapceptionError(`Unsupported provider: ${config.provider}`, 'UNKNOWN');
   }
+
+  return {
+    ...result,
+    estimatedUsd: estimateTokenCost(result.metrics),
+  };
+}
+
+/** Estimate tokens for synthesis prompt (rough estimate). */
+function estimateTokensForSynthesis(extractionCount: number): number {
+  // Each extraction adds ~200 tokens of context
+  const dataTokens = extractionCount * 200;
+  // Synthesis prompt itself ~500 tokens
+  const promptTokens = 500;
+  // Expected response ~1000 tokens
+  const responseTokens = 1000;
+
+  return dataTokens + promptTokens + responseTokens;
+}
+
+/** Compute confidence score based on multiple signals. */
+function computeConfidence(
+  analyticsData: AnalyticsData,
+  platformHint: PlatformHint,
+  validationPassed: boolean,
+  contentLength: number,
+): number {
+  let score = 0.8; // Base score
+
+  // Platform detection confidence
+  score *= platformHint.confidence === 'high' ? 1.0 : platformHint.confidence === 'medium' ? 0.85 : 0.7;
+
+  // Metric count (expect 3-8 for good platform match)
+  const metricCount = analyticsData.metrics.length + analyticsData.highlights.length;
+  score *= metricCount >= 3 && metricCount <= 8 ? 1.0 : metricCount > 8 ? 0.9 : 0.7;
+
+  // Validation passed
+  score *= validationPassed ? 1.0 : 0.5;
+
+  // Source content length (more detail = more confidence)
+  score *= Math.min(contentLength / 5000, 1.0);
+
+  return Math.max(0, Math.min(1, score));
 }
 
 /** Extract analytics from a single source. Safe to call concurrently. */
@@ -340,6 +565,7 @@ export async function extractSource(
   year: number,
 ): Promise<SourceExtraction> {
   const warnings: string[] = [];
+  let callMetrics: CallMetrics | undefined;
 
   logger.debug('aiService', `Starting extraction for ${source.name}`, { sourceId: source.id, type: source.inputType });
 
@@ -365,6 +591,18 @@ export async function extractSource(
   const template = selectTemplate(platformHint);
   const systemPrompt = buildTemplatePrompt(template);
 
+  // Check cache before extraction
+  const contentHash = await hashContent(source.rawContent);
+  const cached = await getCachedExtraction(contentHash, template.id, config.provider);
+  if (cached) {
+    logger.info('aiService', 'Cache hit for extraction', {
+      sourceId: source.id,
+      template: template.id,
+      platform: platformHint.platform,
+    });
+    return cached;
+  }
+
   // Prepare content
   const { textContent, imageDataUrl, warnings: contentWarnings } = await prepareContent(source);
   warnings.push(...contentWarnings);
@@ -383,38 +621,83 @@ export async function extractSource(
     hasText: !!textContent,
   });
 
-  // Call AI
-  const rawResponse = await callProvider(
-    config,
-    systemPrompt,
-    textContent,
-    imageDataUrl,
-    platformHint.platform ?? source.platformName,
-    year,
-  );
+  // Call AI with retry logic
+  let rawResponse: string;
+  let estimatedUsd: number;
+  let validationPassed = false;
 
+  try {
+    const result = await withRetry(
+      () =>
+        callProvider(
+          config,
+          systemPrompt,
+          textContent,
+          imageDataUrl,
+          platformHint.platform ?? source.platformName,
+          year,
+        ),
+      source.id,
+    );
+
+    rawResponse = result.content;
+    callMetrics = result.metrics;
+    estimatedUsd = result.estimatedUsd;
+  } catch (err) {
+    throw toWrapceptionError(err);
+  }
+
+  // Parse and validate response
   const analyticsData = parseAnalyticsResponse(rawResponse);
 
-  // Estimate confidence: more metrics = higher confidence
-  const metricCount = analyticsData.metrics.length + analyticsData.highlights.length;
-  const confidence = Math.min(1, metricCount / Math.max(template.expectedMetrics.length, 3));
+  try {
+    AnalyticsDataSchema.parse(analyticsData);
+    validationPassed = true;
+  } catch (validationErr) {
+    logger.warn('aiService', 'Validation failed on extraction response', {
+      sourceId: source.id,
+      error: validationErr instanceof Error ? validationErr.message : String(validationErr),
+    });
+    warnings.push('Data validation warning: some metrics may be inaccurate.');
+  }
+
+  // Compute confidence from multiple signals
+  const confidence = computeConfidence(analyticsData, platformHint, validationPassed, source.rawContent.length);
 
   logger.info('aiService', `Extraction completed: ${source.name}`, {
     sourceId: source.id,
     platform: platformHint.platform,
     confidence: confidence.toFixed(2),
-    metricsExtracted: metricCount,
+    metricsExtracted: analyticsData.metrics.length,
     warnings: warnings.length,
+    cost: estimatedUsd?.toFixed(4),
   });
 
-  return {
+  const extraction: SourceExtraction = {
     sourceId: source.id,
     platformHint,
     templateId: template.id,
     analyticsData,
     confidence,
     warnings,
+    cost: callMetrics
+      ? {
+          promptTokens: callMetrics.promptTokens,
+          completionTokens: callMetrics.completionTokens,
+          estimatedUsd,
+        }
+      : undefined,
   };
+
+  // Cache the result
+  await cacheExtraction(contentHash, template.id, config.provider, extraction).catch((err) => {
+    logger.warn('aiService', 'Failed to cache extraction', {
+      sourceId: source.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+
+  return extraction;
 }
 
 // ─── Cross-source synthesis ───────────────────────────────────────────────────
@@ -422,6 +705,7 @@ export async function extractSource(
 /**
  * Synthesise multiple per-source extractions into a unified AnalyticsData.
  * For a single source, returns it directly (no extra AI call).
+ * Throws explicit error if synthesis fails (no silent fallback).
  */
 export async function synthesizeAnalytics(
   extractions: SourceExtraction[],
@@ -429,12 +713,22 @@ export async function synthesizeAnalytics(
   year: number,
 ): Promise<AnalyticsData> {
   if (extractions.length === 0) {
-    throw new WrapceptionError('No successful extractions to synthesise', 'NO_SOURCES');
+    throw new WrapceptionError('No successful extractions to synthesise', 'SYNTHESIS_NO_DATA');
   }
 
   logger.info('aiService', `Synthesizing ${extractions.length} extractions`, {
     platforms: extractions.map((e) => e.platformHint.platform).join(', '),
   });
+
+  // Check token budget for synthesis
+  const estimatedTokens = estimateTokensForSynthesis(extractions.length);
+  const MAX_TOKENS = 100000;
+  if (estimatedTokens > MAX_TOKENS) {
+    throw new WrapceptionError(
+      `Synthesis would use ${estimatedTokens} tokens. Limit is ${MAX_TOKENS}. Remove some sources and try again.`,
+      'TOKEN_BUDGET_EXCEEDED',
+    );
+  }
 
   if (extractions.length === 1) {
     logger.debug('aiService', 'Single source synthesis - returning direct extraction');
@@ -454,6 +748,7 @@ export async function synthesizeAnalytics(
     totalMetrics: allMetrics.length,
     totalHighlights: allHighlights.length,
     totalTrends: allTrends.length,
+    estimatedTokens,
   });
 
   // Build a summary prompt with all extracted data for cross-domain narrative
@@ -464,7 +759,8 @@ export async function synthesizeAnalytics(
         .slice(0, 5)
         .map((m) => `${m.name}: ${m.value}${m.unit ? ' ' + m.unit : ''}`)
         .join(', ');
-      return `${e.platformHint.platform ?? 'Unknown'}: ${data.yearSummary} Key stats: ${metricsText || 'see highlights'}`;
+      const confidence = (e.confidence * 100).toFixed(0);
+      return `${e.platformHint.platform ?? 'Unknown'} (confidence ${confidence}%): ${data.yearSummary} Key stats: ${metricsText || 'see highlights'}`;
     })
     .join('\n');
 
@@ -476,29 +772,54 @@ ${summaryContext}
 Write a cohesive 2-3 sentence cross-domain year summary that connects insights across ALL platforms (e.g. how fitness correlated with music or work habits). Be specific, use real numbers. Return ONLY valid JSON:
 { "yearSummary": "...", "recommendations": ["cross-domain recommendation 1", "recommendation 2", "recommendation 3"] }`;
 
-  let crossNarrative = { yearSummary: '', recommendations: [] as string[] };
+  logger.debug('aiService', 'Calling AI for cross-domain synthesis');
+
+  let crossNarrative: { yearSummary: string; recommendations: string[] };
 
   try {
-    logger.debug('aiService', 'Calling AI for cross-domain synthesis');
-    const raw = await callProvider(config, '', crossDomainPrompt, null, 'combined', year);
+    const result = await withRetry(
+      () => callProvider(config, '', crossDomainPrompt, null, 'combined', year),
+    );
+
+    const raw = result.content;
     const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      crossNarrative.yearSummary = parsed.yearSummary ?? '';
-      crossNarrative.recommendations = parsed.recommendations ?? [];
+
+    if (!match) {
+      throw new WrapceptionError(
+        'AI synthesis did not return valid JSON',
+        'AI_RESPONSE_INVALID_JSON',
+      );
     }
-    logger.debug('aiService', 'Cross-domain synthesis completed');
-  } catch (err) {
-    logger.warn('aiService', 'Cross-domain synthesis failed, using fallback', {
-      error: err instanceof Error ? err.message : String(err),
+
+    const parsed = JSON.parse(match[0]);
+    crossNarrative = {
+      yearSummary: parsed.yearSummary ?? '',
+      recommendations: parsed.recommendations ?? [],
+    };
+
+    if (!crossNarrative.yearSummary) {
+      throw new WrapceptionError(
+        'AI synthesis returned empty summary',
+        'AI_RESPONSE_INVALID_JSON',
+      );
+    }
+
+    logger.info('aiService', 'Cross-domain synthesis completed', {
+      summaryLength: crossNarrative.yearSummary.length,
+      recommendations: crossNarrative.recommendations.length,
+      cost: result.estimatedUsd?.toFixed(4),
     });
-    // Fallback: use first source's summary
-    crossNarrative.yearSummary = extractions[0].analyticsData.yearSummary;
-    crossNarrative.recommendations = allRecs.slice(0, 3);
+  } catch (err) {
+    const wrappedErr = toWrapceptionError(err);
+    logger.error('aiService', 'Cross-domain synthesis failed', {
+      error: wrappedErr.message,
+      code: wrappedErr.code,
+    });
+    throw wrappedErr;
   }
 
   return {
-    yearSummary: crossNarrative.yearSummary || extractions[0].analyticsData.yearSummary,
+    yearSummary: crossNarrative.yearSummary,
     highlights: allHighlights,
     metrics: allMetrics,
     trends: allTrends,

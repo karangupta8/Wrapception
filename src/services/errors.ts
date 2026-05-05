@@ -9,7 +9,11 @@ export type ErrorCode =
   | 'AI_API_NETWORK'
   | 'AI_API_TIMEOUT'
   | 'AI_RESPONSE_INVALID'
+  | 'AI_RESPONSE_INVALID_JSON'
   | 'PDF_PARSE_FAILED'
+  | 'TOKEN_BUDGET_EXCEEDED'
+  | 'SYNTHESIS_NO_DATA'
+  | 'EXTRACTION_ALL_FAILED'
   | 'UNKNOWN';
 
 export interface ErrorDetail {
@@ -92,12 +96,38 @@ const ERROR_DETAILS: Record<ErrorCode, ErrorDetail> = {
     description:
       'The AI did not return valid data. Try regenerating — if the issue persists, switch models or check your system prompt.',
   },
+  AI_RESPONSE_INVALID_JSON: {
+    title: 'Invalid data from AI',
+    description:
+      'The AI response contained invalid metrics. Try again with fewer or simpler sources.',
+  },
   PDF_PARSE_FAILED: {
     title: 'Could not read PDF',
     description:
       'Text extraction from this PDF failed. Try exporting it as a PNG image from your app, or copy-paste the text manually.',
     action: 'Upload text instead',
     actionTarget: 'upload',
+  },
+  TOKEN_BUDGET_EXCEEDED: {
+    title: 'Request too large',
+    description:
+      'Combining all your wraps would exceed the token limit. Remove some sources and try again.',
+    action: 'Remove a wrap',
+    actionTarget: 'upload',
+  },
+  SYNTHESIS_NO_DATA: {
+    title: 'No data extracted',
+    description:
+      'All source extractions failed. Check your API key, internet connection, and try again with different sources.',
+    action: 'Open AI Config',
+    actionTarget: 'ai-config',
+  },
+  EXTRACTION_ALL_FAILED: {
+    title: 'Extraction failed',
+    description:
+      'All sources failed extraction. Check your API key and try again.',
+    action: 'Open AI Config',
+    actionTarget: 'ai-config',
   },
   UNKNOWN: {
     title: 'Something went wrong',

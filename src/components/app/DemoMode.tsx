@@ -27,7 +27,7 @@ export function DemoMode({ onExit }: DemoModeProps) {
       // Load demo data into session
       loadDemoData(processedSources, SAMPLE_ANALYTICS_DATA);
     }
-  }, []);
+  }, [session.uploadedSources.length, setYear, loadDemoData]);
 
   return (
     <div className="relative">

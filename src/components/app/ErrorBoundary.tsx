@@ -1,5 +1,5 @@
 import React, { Component, ReactNode } from 'react';
-import { AlertTriangle, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { AlertTriangle, RotateCcw, RefreshCw, Download, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/services/logger';
 
@@ -46,7 +46,11 @@ export class ErrorBoundary extends Component<Props, State> {
     });
   }
 
-  handleReset = () => {
+  handleReload = () => {
+    window.location.reload();
+  };
+
+  handleTryAgain = () => {
     this.setState({
       hasError: false,
       error: null,
@@ -120,44 +124,55 @@ export class ErrorBoundary extends Component<Props, State> {
 
               {/* Actions */}
               <div className="space-y-3">
-                {/* Try again */}
+                {/* Reload page — primary action, fixes context/HMR issues */}
                 <Button
-                  onClick={this.handleReset}
+                  onClick={this.handleReload}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Reload Page
+                </Button>
+
+                {/* Soft retry — re-renders children without reload */}
+                <Button
+                  onClick={this.handleTryAgain}
+                  variant="outline"
                   className="w-full"
                 >
                   <RotateCcw className="w-4 h-4 mr-2" />
-                  Try Again
+                  Try Without Reloading
                 </Button>
 
-                {/* Export logs */}
-                <Button
-                  onClick={this.handleExportLogs}
-                  variant="outline"
-                  className="w-full"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Logs
-                </Button>
+                <div className="flex gap-2">
+                  {/* Export logs */}
+                  <Button
+                    onClick={this.handleExportLogs}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Export Logs
+                  </Button>
 
-                {/* Reset session */}
-                <Button
-                  onClick={this.handleReset_}
-                  variant="outline"
-                  className="w-full text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Reset Session
-                </Button>
+                  {/* Reset session */}
+                  <Button
+                    onClick={this.handleReset_}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    Reset Session
+                  </Button>
+                </div>
               </div>
 
               {/* Recovery info */}
-              <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-                <p>
-                  <strong>What happened?</strong> An unexpected error in the application. Your data is safely stored
-                  in your browser.
-                </p>
-                <p className="mt-2">
-                  <strong>Next steps:</strong> Click "Try Again" to reload the component, or "Reset Session" to start fresh.
+              <div className="text-xs text-muted-foreground bg-secondary/50 rounded-lg p-3 space-y-1">
+                <p>Your session data is stored locally and safe.</p>
+                <p className="text-muted-foreground/60">
+                  "Reload Page" fixes most errors. "Reset Session" clears all data and starts fresh.
                 </p>
               </div>
             </div>
