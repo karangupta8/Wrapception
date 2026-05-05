@@ -13,6 +13,8 @@ import { StatsOverview } from './StatsOverview';
 import { CategoryPieChart } from './CategoryPieChart';
 import { PlatformBarChart } from './PlatformBarChart';
 import { InsightsDashboard } from './InsightsDashboard';
+import { ExtractionProgress } from './ExtractionProgress';
+import { ExtractionValidationPanel } from './ExtractionValidationPanel';
 import { useToast } from '@/hooks/use-toast';
 
 export function Dashboard() {
@@ -131,15 +133,39 @@ export function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {session.uploadedSources.map((source) => (
-              <SourceCard
-                key={source.id}
-                source={source}
-                onRemove={() => removeSource(source.id)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {session.uploadedSources.map((source) => (
+                <SourceCard
+                  key={source.id}
+                  source={source}
+                  onRemove={() => removeSource(source.id)}
+                />
+              ))}
+            </div>
+
+            {/* Extraction Validation Panels */}
+            {session.uploadedSources.some(s => s.status === 'processed' || s.status === 'failed') && (
+              <div className="space-y-3">
+                <h3 className="font-display text-lg">Extraction Details</h3>
+                <div className="grid gap-3">
+                  {session.uploadedSources
+                    .filter(s => s.status === 'processed' || s.status === 'failed')
+                    .map((source) => {
+                      // Note: In a full implementation, these would come from extraction results
+                      // For now, showing the validation panel structure
+                      return (
+                        <ExtractionValidationPanel
+                          key={source.id}
+                          source={source}
+                          onRetry={() => handleGenerateInsights()}
+                        />
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -149,12 +175,20 @@ export function Dashboard() {
       {/* Generate Insights Button + Error */}
       {session.uploadedSources.length > 0 && (
         <div id="ai-config-panel" className="flex flex-col items-center gap-4">
-          {/* Per-source progress summary */}
+          {/* Per-source progress detail */}
           {session.isGeneratingInsights && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Analysing {session.uploadedSources.filter(s => s.status === 'processed').length} of{' '}
-              {session.uploadedSources.length} sources…
+            <div className="w-full bg-card border border-border rounded-xl p-4">
+              <p className="text-sm font-medium mb-3">Extraction Progress</p>
+              <div className="space-y-1">
+                {session.uploadedSources.map((source, idx) => (
+                  <ExtractionProgress
+                    key={source.id}
+                    source={source}
+                    index={idx}
+                    total={session.uploadedSources.length}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
