@@ -98,23 +98,25 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl md:text-5xl">Your {session.year}</h1>
+          <h1 className="font-display text-4xl md:text-5xl">Your {session.year} Wraps</h1>
           <p className="text-muted-foreground mt-1">
-            {session.uploadedSources.length} source{session.uploadedSources.length !== 1 ? 's' : ''} uploaded
+            {session.uploadedSources.length === 0
+              ? 'Upload your unsolicited year-in-reviews to get started'
+              : `${session.uploadedSources.length} wrap${session.uploadedSources.length !== 1 ? 's' : ''} uploaded`}
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handleExport} disabled={session.uploadedSources.length === 0}>
+        <div className="flex gap-2 flex-wrap justify-end">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={session.uploadedSources.length === 0}>
             <FileJson className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" onClick={() => setShowBulkUpload(true)}>
+          <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
             <FolderUp className="w-4 h-4 mr-2" />
             Bulk Upload
           </Button>
-          <Button onClick={() => setShowUploadWizard(true)}>
+          <Button size="sm" onClick={() => setShowUploadWizard(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Wizard
+            Add Wrap
           </Button>
         </div>
       </div>
@@ -139,13 +141,15 @@ export function Dashboard() {
       {/* Uploaded Sources */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-2xl">Uploaded Sources</h2>
+          <h2 className="font-display text-2xl">Your Wraps</h2>
         </div>
 
         {session.uploadedSources.length === 0 ? (
-          <div className="p-8 rounded-2xl border-2 border-dashed border-border text-center">
-            <p className="text-muted-foreground">
-              Use Quick Add above or the Bulk Upload button to get started
+          <div className="p-10 rounded-2xl border-2 border-dashed border-border text-center space-y-2">
+            <p className="text-muted-foreground font-medium">No wraps yet.</p>
+            <p className="text-sm text-muted-foreground/60">
+              Drag in screenshots, PDFs, or paste text from any platform's year-in-review.
+              Yes, even that LinkedIn one.
             </p>
           </div>
         ) : (

@@ -176,4 +176,9 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
+
+  @keyframes scroll-x {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
 }

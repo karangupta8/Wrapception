@@ -27,7 +27,15 @@ const Index = () => {
             {/* App Section */}
             <ErrorBoundary>
               <section id="create" className="py-20 border-t border-border/50">
-                <div className="container mx-auto px-6">
+                <div className="container mx-auto px-6 max-w-5xl">
+                  <div className="mb-10 text-center">
+                    <h2 className="font-display text-3xl md:text-4xl mb-2">
+                      Make Your Wrapception
+                    </h2>
+                    <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                      Drop in the wraps. Watch AI reconcile them into one narrative.
+                    </p>
+                  </div>
                   <SessionHeader />
                   <Dashboard />
                 </div>
@@ -36,10 +44,13 @@ const Index = () => {
 
             {/* Footer */}
             <footer className="py-12 border-t border-border/50">
-              <div className="container mx-auto px-6 text-center">
-                <p className="font-display text-2xl mb-2">Wrapception</p>
+              <div className="container mx-auto px-6 text-center space-y-3">
+                <p className="font-display text-2xl">Wrapception</p>
                 <p className="text-sm text-muted-foreground">
-                  Your year, unified. All data stays in your browser.
+                  An allegory on wrap culture. And maybe vibe coding too.
+                </p>
+                <p className="text-xs text-muted-foreground/40">
+                  No server. No analytics. No wrap about your wraps sent to us. Just yours.
                 </p>
               </div>
             </footer>

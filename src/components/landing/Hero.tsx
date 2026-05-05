@@ -5,10 +5,30 @@ interface HeroProps {
   onTryDemo?: () => void;
 }
 
+const ABSURD_WRAPS = [
+  'Spotify Wrapped',
+  'LinkedIn Wrapped',
+  'GitHub Unwrapped',
+  'Strava Year in Sport',
+  'PayTm Wrapped',
+  'ChatGPT Wrapped',
+  'Duolingo Year in Review',
+  'Your Bank App Wrapped',
+  'Amazon Shopping Wrapped',
+  'Uber Eats Wrapped',
+  'Google Maps Wrapped',
+  'Netflix Wrapped',
+  'Screen Time Wrapped',
+  'Instagram Wrapped',
+  'Your Fridge App, Probably',
+];
+
 export function Hero({ onTryDemo }: HeroProps) {
   const scrollToCreate = () => {
     document.getElementById('create')?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const doubled = [...ABSURD_WRAPS, ...ABSURD_WRAPS];
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -26,12 +46,12 @@ export function Hero({ onTryDemo }: HeroProps) {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 animate-fade-up">
             <Sparkles className="w-4 h-4 text-accent" />
             <span className="text-sm font-medium text-muted-foreground">
-              Your year, unified
+              A Wrapped™ for your Wraps™
             </span>
           </div>
 
           {/* Main heading */}
-          <h1 
+          <h1
             className="font-display text-6xl md:text-8xl lg:text-9xl tracking-tight animate-fade-up"
             style={{ animationDelay: '0.1s' }}
           >
@@ -39,20 +59,44 @@ export function Hero({ onTryDemo }: HeroProps) {
           </h1>
 
           {/* Tagline */}
-          <p 
+          <p
             className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto leading-relaxed animate-fade-up"
             style={{ animationDelay: '0.2s' }}
           >
-            All your Wrappeds. One Meta-Wrapped.
+            LinkedIn made a Wrapped.{' '}
+            <span className="text-foreground font-medium">Someone had to respond.</span>
           </p>
 
+          {/* Scrolling ticker */}
+          <div
+            className="overflow-hidden animate-fade-up"
+            style={{ animationDelay: '0.25s' }}
+            aria-hidden="true"
+          >
+            <div
+              className="flex gap-6 whitespace-nowrap"
+              style={{
+                animation: 'scroll-x 40s linear infinite',
+              }}
+            >
+              {doubled.map((wrap, i) => (
+                <span
+                  key={i}
+                  className="text-sm text-muted-foreground/50 font-mono px-3 py-1 rounded-full border border-border/30 shrink-0"
+                >
+                  {wrap}
+                </span>
+              ))}
+            </div>
+          </div>
+
           {/* Description */}
-          <p 
+          <p
             className="text-base md:text-lg text-muted-foreground/80 max-w-xl mx-auto animate-fade-up"
             style={{ animationDelay: '0.3s' }}
           >
-            Upload your year-end summaries from Spotify, Strava, GitHub, and more. 
-            Get a unified dashboard and AI-powered narrative of your entire year.
+            Upload every unsolicited year-in-review you received. Let AI figure out
+            what they collectively say about you as a person.
           </p>
 
           {/* CTAs */}
@@ -65,7 +109,7 @@ export function Hero({ onTryDemo }: HeroProps) {
               className="group px-8 py-6 text-lg rounded-full gradient-hero border-0 shadow-elevated hover:shadow-soft transition-all duration-300"
               onClick={scrollToCreate}
             >
-              Create My Wrapception
+              Wrap My Wraps
               <ArrowDown className="ml-2 w-5 h-5 group-hover:translate-y-1 transition-transform" />
             </Button>
             {onTryDemo && (
@@ -76,24 +120,25 @@ export function Hero({ onTryDemo }: HeroProps) {
                 onClick={onTryDemo}
               >
                 <Sparkles className="mr-2 w-5 h-5" />
-                Try Demo
+                See How It Works
               </Button>
             )}
           </div>
 
           {/* Privacy note */}
-          <p 
-            className="text-sm text-muted-foreground/60 animate-fade-up"
+          <p
+            className="text-sm text-muted-foreground/50 animate-fade-up"
             style={{ animationDelay: '0.5s' }}
           >
-            🔒 All data stays in your browser. Nothing is stored on our servers.
+            🔒 Stays in your browser. Unlike your Spotify listening history, which is on their servers forever.
           </p>
         </div>
 
         {/* Scroll indicator */}
-        <button 
+        <button
           onClick={scrollToCreate}
           className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce cursor-pointer"
+          aria-label="Scroll to app"
         >
           <div className="w-6 h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-2">
             <div className="w-1 h-2 rounded-full bg-muted-foreground/50" />
